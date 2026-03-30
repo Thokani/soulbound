@@ -9,9 +9,28 @@
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { background: #0a0a0a; display: flex; justify-content: center; align-items: center; min-height: 100vh; overflow: hidden; }
   canvas { display: block; }
+  #play-btn {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, 120px);
+    background: #2244aa;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 22px;
+    font-family: monospace;
+    font-weight: bold;
+    padding: 14px 40px;
+    cursor: pointer;
+    z-index: 999;
+    letter-spacing: 2px;
+  }
+  #play-btn:hover { background: #4466dd; }
 </style>
 </head>
 <body>
+<button id="play-btn">▶ PLAY</button>
 <script>
 // ============================================================
 // SOULBOUND - A top-down roguelike
@@ -760,18 +779,15 @@ class MenuScene extends Phaser.Scene {
       }).setOrigin(0.5);
     }
 
-    const startGame = () => this.scene.start('Game');
+    const startGame = () => {
+      document.getElementById('play-btn').style.display = 'none';
+      this.scene.start('Game');
+    };
 
-    const btn = this.add.text(W/2, 516, '▶  PLAY', {
-      fontSize:'24px', fill:'#ffffff', fontFamily:'monospace', fontStyle:'bold',
-      backgroundColor:'#2244aa', padding:{ x:30, y:12 }
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-
-    btn.on('pointerover', () => btn.setStyle({ backgroundColor:'#4466dd' }));
-    btn.on('pointerout',  () => btn.setStyle({ backgroundColor:'#2244aa' }));
-    btn.on('pointerdown', startGame);
-
-    this.tweens.add({ targets: btn, alpha: 0.7, yoyo: true, duration: 800, repeat: -1 });
+    // HTML button — guaranteed to work
+    const btn = document.getElementById('play-btn');
+    btn.style.display = 'block';
+    btn.onclick = startGame;
 
     this.input.keyboard.once('keydown-ENTER', startGame);
     this.input.keyboard.once('keydown-SPACE', startGame);
