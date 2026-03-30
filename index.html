@@ -26,6 +26,7 @@ body { background:#0a0a0a; font-family:monospace; overflow:hidden; }
 </head>
 <body>
 
+<div id="game-wrap" style="position:fixed;top:0;left:0;width:100vw;height:100vh;display:flex;align-items:center;justify-content:center;background:#0a0a0a;"></div>
 <div id="menu">
   <h1>SOULBOUND</h1>
   <p class="sub">Absorb enemy souls. Build your party. Survive.</p>
@@ -549,9 +550,10 @@ class OverScene extends Phaser.Scene {
 
 // ─── BOOT ────────────────────────────────────────────────────
 const game = new Phaser.Game({
-  type: Phaser.AUTO,
+  type: Phaser.CANVAS,
   width: W, height: H,
   backgroundColor: '#0a0a0a',
+  parent: 'game-wrap',
   scene: [GameScene, OverScene],
 });
 
