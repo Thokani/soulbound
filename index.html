@@ -12,183 +12,94 @@ canvas { image-rendering:pixelated; image-rendering:crisp-edges; display:block; 
 #menu {
   position:fixed; inset:0; background:#000;
   display:flex; flex-direction:column; align-items:center; justify-content:center;
-  z-index:999; gap:14px;
+  z-index:999; gap:12px;
 }
 #menu h1 {
-  font-family:'Press Start 2P',monospace;
-  font-size:32px; color:#cc88ff;
-  text-shadow:4px 4px 0 #440066, 0 0 30px #8844aa;
-  letter-spacing:4px;
+  font-family:'Press Start 2P',monospace; font-size:28px; color:#cc88ff;
+  text-shadow:3px 3px 0 #440066, 0 0 40px #8844aa; letter-spacing:4px; margin-bottom:8px;
 }
-#menu .sub  { font-family:'Press Start 2P',monospace; font-size:9px; color:#5555aa; }
-#menu .ctrl { font-family:'Press Start 2P',monospace; font-size:7px; color:#334; margin-top:4px; }
-#menu .stats{ font-family:'Press Start 2P',monospace; font-size:7px; color:#333366; margin-top:10px; }
+.mline { font-family:'Press Start 2P',monospace; font-size:8px; color:#555588; }
+.mctrl { font-family:'Press Start 2P',monospace; font-size:7px; color:#333366; margin-top:2px; }
+#stats  { font-family:'Press Start 2P',monospace; font-size:7px; color:#333355; margin-top:8px; }
 #play-btn {
-  font-family:'Press Start 2P',monospace;
-  margin-top:16px; background:#220044; color:#cc88ff;
-  border:3px solid #8844aa; padding:14px 32px;
-  font-size:14px; cursor:pointer; letter-spacing:2px;
-  box-shadow:4px 4px 0 #440066;
+  font-family:'Press Start 2P',monospace; margin-top:14px;
+  background:#1a0033; color:#cc88ff; border:2px solid #8844aa;
+  padding:12px 32px; font-size:13px; cursor:pointer; letter-spacing:2px;
+  box-shadow:3px 3px 0 #330066;
 }
-#play-btn:hover { background:#440088; color:#ffffff; }
-#play-btn:active { transform:translate(2px,2px); box-shadow:2px 2px 0 #440066; }
+#play-btn:hover { background:#330055; color:#fff; }
+#play-btn:active { transform:translate(2px,2px); box-shadow:1px 1px 0 #330066; }
 </style>
 </head>
 <body>
-
 <div id="menu">
   <h1>SOULBOUND</h1>
-  <p class="sub">Absorb souls. Build your party. Escape the dungeon.</p>
-  <p class="ctrl">WASD — Move &nbsp;|&nbsp; SPACE — Attack &nbsp;|&nbsp; SHIFT — Dodge</p>
-  <p class="ctrl">Kill enemies → walk over soul orbs → gain companions</p>
-  <p class="ctrl">Clear room → walk to top door → pick a boon</p>
-  <p class="stats" id="stats-txt"></p>
-  <button id="play-btn">▶ START</button>
+  <p class="mline">Absorb souls. Build your party. Escape.</p>
+  <p class="mctrl">WASD — Move &nbsp;|&nbsp; SPACE — Attack &nbsp;|&nbsp; SHIFT — Dodge</p>
+  <p class="mctrl">Kill enemies → absorb soul orbs → gain companions</p>
+  <p class="mctrl">Clear the room → walk to the top door → pick a boon</p>
+  <p id="stats"></p>
+  <button id="play-btn">▶ &nbsp;START</button>
 </div>
 
 <script>
-// ─── STATS ───────────────────────────────────────────────────
-const sbRuns = parseInt(localStorage.getItem('sb_runs')||'0');
-const sbBest = parseInt(localStorage.getItem('sb_best')||'0');
-if(sbRuns>0) document.getElementById('stats-txt').textContent=
-  `RUNS: ${sbRuns}   BEST ROOM: ${sbBest}`;
+// Stats
+const sbR=parseInt(localStorage.getItem('sb_runs')||'0');
+const sbB=parseInt(localStorage.getItem('sb_best')||'0');
+if(sbR>0) document.getElementById('stats').textContent=`RUNS: ${sbR}   BEST: ROOM ${sbB}`;
 
-// ─── CONFIG ──────────────────────────────────────────────────
-// 300x200 base, scaled 3x = 900x600 on screen
-const BW=300, BH=200, ZOOM=3;
-const WALL=16;
+// Base resolution x zoom
+const BW=320, BH=208, ZOOM=3;
+const WALL=16; // wall thickness in base px
 
-// ─── PIXEL SPRITE HELPERS ────────────────────────────────────
-// Draw a pixel sprite from a 2D array of color strings ('' = transparent)
-function makeSprite(scene, key, pixels, pw=1) {
-  const rows = pixels.length, cols = pixels[0].length;
-  const tex = scene.textures.createCanvas(key, cols*pw, rows*pw);
-  const ctx = tex.getContext();
-  pixels.forEach((row,y)=>{
-    row.forEach((col,x)=>{
-      if(!col) return;
-      ctx.fillStyle = col;
-      ctx.fillRect(x*pw, y*pw, pw, pw);
-    });
-  });
-  tex.refresh();
-}
-
-// ─── BOONS ───────────────────────────────────────────────────
-const BOON_LIST = [
-  { id:'iron',    name:'IRON SKIN',     desc:'+20 MAX HP',          apply:p=>{ p.maxHp+=20; p.hp=Math.min(p.hp+20,p.maxHp); } },
-  { id:'swift',   name:'SWIFT BLADE',   desc:'ATTACK SPEED UP',     apply:p=>{ p.atkCd=Math.max(0.15,p.atkCd-0.1); } },
-  { id:'life',    name:'LIFESTEAL',      desc:'HEAL 5 PER KILL',    apply:p=>{ p.lifesteal+=5; } },
-  { id:'berserk', name:'BERSERKER',      desc:'+25% DMG <50% HP',   apply:p=>{ p.berserker=true; } },
-  { id:'slink',   name:'SOUL LINK',      desc:'+5% DMG/COMPANION',  apply:p=>{ p.soulLink=true; } },
-  { id:'tough',   name:'TOUGHNESS',      desc:'10% LESS DAMAGE',    apply:p=>{ p.dmgRes=Math.min(0.5,(p.dmgRes||0)+0.1); } },
-  { id:'speed',   name:'FLEET FOOT',     desc:'+15% MOVE SPEED',    apply:p=>{ p.spd=Math.min(120,p.spd*1.15); } },
+const BOONS=[
+  {id:'iron',   name:'IRON SKIN',    desc:'+20 MAX HP',         apply:p=>{p.maxHp+=20;p.hp=Math.min(p.hp+20,p.maxHp);}},
+  {id:'swift',  name:'SWIFT BLADE',  desc:'FASTER ATTACKS',     apply:p=>{p.atkCd=Math.max(0.15,p.atkCd-0.1);}},
+  {id:'life',   name:'LIFESTEAL',    desc:'HEAL 5 PER KILL',    apply:p=>{p.lifesteal+=5;}},
+  {id:'berserk',name:'BERSERKER',    desc:'+25% DMG <50% HP',   apply:p=>{p.berserker=true;}},
+  {id:'slink',  name:'SOUL LINK',    desc:'+5% DMG/SOUL',       apply:p=>{p.soulLink=true;}},
+  {id:'tough',  name:'TOUGHNESS',    desc:'TAKE 10% LESS DMG',  apply:p=>{p.dmgRes=Math.min(0.5,(p.dmgRes||0)+0.1);}},
+  {id:'speed',  name:'FLEET FOOT',   desc:'+15% SPEED',         apply:p=>{p.spd=Math.min(120,p.spd*1.15);}},
 ];
 
-const SOUL_DEF = {
-  bone:   { name:'BONE SHIELD', desc:'10% LESS DAMAGE', col:0xddcc99 },
-  shadow: { name:'SHADOW STEP', desc:'DODGE CD -30%',   col:0xaa55ff },
-  fury:   { name:'FURY',        desc:'+15% ATK DMG',    col:0xff5522 },
+const SOUL_DEF={
+  bone:  {name:'BONE SHIELD',desc:'10% LESS DAMAGE', col:0xddcc88},
+  shadow:{name:'SHADOW STEP',desc:'DODGE CD -30%',   col:0xaa55ff},
+  fury:  {name:'FURY',       desc:'+15% ATK DMG',    col:0xff5522},
 };
 
-const ENEMY_DEF = [
-  { type:'skel',  name:'SKELETON',   col:'#cccc99', hp:40, spd:28, dmg:12, soul:'bone',   ranged:false, charge:false },
-  { type:'wisp',  name:'WISP',       col:'#aa55ff', hp:25, spd:55, dmg:8,  soul:'shadow', ranged:true,  charge:false },
-  { type:'demon', name:'RAGE DEMON', col:'#ff5522', hp:60, spd:20, dmg:18, soul:'fury',   ranged:false, charge:true  },
+const ENEMY_DEF=[
+  {type:'skeleton',name:'SKELETON',  key:'skeleton', hp:40, spd:28, dmg:12, soul:'bone',   ranged:false,charge:false},
+  {type:'wisp',    name:'WISP',      key:'wisp',     hp:25, spd:55, dmg:8,  soul:'shadow', ranged:true, charge:false},
+  {type:'demon',   name:'RAGE DEMON',key:'demon',    hp:60, spd:20, dmg:18, soul:'fury',   ranged:false,charge:true },
 ];
-
-// ─── SPRITES (pixel arrays) ───────────────────────────────────
-const _ = '';
-const SPRITES = {
-  player:[
-    [_,'#88aaff','#88aaff',_],
-    ['#88aaff','#ffffff','#88aaff','#88aaff'],
-    ['#88aaff','#88aaff','#88aaff','#88aaff'],
-    [_,'#88aaff',_,'#88aaff'],
-  ],
-  skel:[
-    [_,'#cccc99','#cccc99',_],
-    ['#cccc99','#333333','#333333','#cccc99'],
-    [_,'#cccc99','#cccc99',_],
-    [_,'#cccc99',_,'#cccc99'],
-  ],
-  wisp:[
-    [_,'#aa55ff','#aa55ff',_],
-    ['#aa55ff','#ffffff','#ffffff','#aa55ff'],
-    ['#aa55ff','#aa55ff','#aa55ff','#aa55ff'],
-    [_,'#aa55ff','#aa55ff',_],
-  ],
-  demon:[
-    [_,'#ff5522',_,_],
-    ['#ff5522','#ff5522','#ff5522',_],
-    [_,'#ff5522','#ff5522','#ff5522'],
-    ['#ff5522',_,_,'#ff5522'],
-  ],
-  orb:[
-    [_,'#ffff55',_],
-    ['#ffff55','#ffffff','#ffff55'],
-    [_,'#ffff55',_],
-  ],
-  floor_tile:[
-    ['#111122','#111122','#111122','#111122','#111122','#111122','#111122','#111122'],
-    ['#111122','#111122','#111122','#111122','#111122','#111122','#111122','#111122'],
-    ['#111122','#111122','#151528','#151528','#151528','#151528','#111122','#111122'],
-    ['#111122','#111122','#151528','#151528','#151528','#151528','#111122','#111122'],
-    ['#111122','#111122','#151528','#151528','#151528','#151528','#111122','#111122'],
-    ['#111122','#111122','#151528','#151528','#151528','#151528','#111122','#111122'],
-    ['#111122','#111122','#111122','#111122','#111122','#111122','#111122','#111122'],
-    ['#111122','#111122','#111122','#111122','#111122','#111122','#111122','#111122'],
-  ],
-  wall_tile:[
-    ['#223','#334','#334','#334','#334','#334','#334','#223'],
-    ['#334','#445','#445','#445','#445','#445','#445','#334'],
-    ['#334','#445','#556','#556','#556','#556','#445','#334'],
-    ['#334','#445','#556','#445','#445','#556','#445','#334'],
-    ['#334','#445','#556','#445','#445','#556','#445','#334'],
-    ['#334','#445','#556','#556','#556','#556','#445','#334'],
-    ['#334','#445','#445','#445','#445','#445','#445','#334'],
-    ['#223','#334','#334','#334','#334','#334','#334','#223'],
-  ],
-};
 
 // ─── GAME SCENE ──────────────────────────────────────────────
 class GameScene extends Phaser.Scene {
-  constructor(){ super({key:'Game'}); }
+  constructor(){super({key:'Game'});}
 
   preload(){
-    // Create pixel textures
-    Object.entries(SPRITES).forEach(([key,pixels])=>makeSprite(this,key,pixels));
+    ['player','skeleton','wisp','demon','orb','floor','wall','door_closed','door_open','proj']
+      .forEach(k=>this.load.image(k,`assets/${k}.png`));
   }
 
   create(){
-    this.souls=[];
-    this.boons=[];
-    this.enemies=[];
-    this.projs=[];
-    this.orbs=[];
-    this.room=0;
-    this.orbAnim=0;
+    this.souls=[]; this.boons=[];
+    this.enemies=[]; this.projs=[]; this.orbs=[];
+    this.room=0; this.orbT=0;
 
-    // player
     this.p={
-      x:BW/2, y:BH/2+20,
-      hp:100, maxHp:100, spd:65,
+      x:BW/2, y:BH-WALL-12,
+      hp:100, maxHp:100, spd:70,
       atkCd:0.5, atkT:0,
       dodgeCd:1.2, dodgeT:0,
       dodging:false, dodgeDur:0, dvx:0, dvy:0,
-      fx:1, fy:0,
+      fx:0, fy:-1,
       lifesteal:0, berserker:false, soulLink:false, dmgRes:0,
       dead:false,
     };
 
-    // draw tilemap background
-    this.drawTiles();
-
-    // player sprite
-    this.pSprite = this.add.image(this.p.x, this.p.y, 'player').setDepth(5).setScale(1);
-    this.atkFlash = this.add.graphics().setDepth(4);
-
-    // UI
+    this.buildRoom();
     this.setupUI();
 
     this.keys=this.input.keyboard.addKeys({
@@ -199,132 +110,106 @@ class GameScene extends Phaser.Scene {
       atk:Phaser.Input.Keyboard.KeyCodes.SPACE,
       dodge:Phaser.Input.Keyboard.KeyCodes.SHIFT,
     });
-
-    this.nextRoom();
   }
 
-  drawTiles(){
-    if(this.tileLayer) this.tileLayer.destroy();
-    this.tileLayer = this.add.graphics().setDepth(-1);
-    const g = this.tileLayer;
-    const ts = 8; // tile size in base pixels
-
-    // Floor
-    for(let tx=WALL;tx<BW-WALL;tx+=ts){
-      for(let ty=WALL;ty<BH-WALL;ty+=ts){
-        // alternating subtle floor
-        const shade = ((tx/ts + ty/ts) % 2 === 0) ? '#111122' : '#121224';
-        g.fillStyle(parseInt(shade.replace('#','0x')));
-        g.fillRect(tx,ty,ts,ts);
-      }
-    }
-    // Floor border
-    g.lineStyle(1,0x223366,1);
-    g.strokeRect(WALL,WALL,BW-WALL*2,BH-WALL*2);
-
-    // Walls (top, bottom, sides)
-    g.fillStyle(0x1a1a33); g.fillRect(0,0,BW,WALL);
-    g.fillStyle(0x1a1a33); g.fillRect(0,BH-WALL,BW,WALL);
-    g.fillStyle(0x1a1a33); g.fillRect(0,0,WALL,BH);
-    g.fillStyle(0x1a1a33); g.fillRect(BW-WALL,0,WALL,BH);
-
-    // Wall detail
-    g.lineStyle(1,0x334477,0.6);
-    for(let x=WALL;x<=BW-WALL;x+=ts){ g.lineBetween(x,0,x,WALL); g.lineBetween(x,BH-WALL,x,BH); }
-    for(let y=0;y<=WALL;y+=ts){ g.lineBetween(0,y,BW,y); }
-    for(let y=BH-WALL;y<=BH;y+=ts){ g.lineBetween(0,y,BW,y); }
-
-    // Door
-    if(this.doorGfx) this.doorGfx.destroy();
-    this.doorGfx = this.add.graphics().setDepth(0);
-    this.setDoor(false);
-  }
-
-  setDoor(open){
-    this.doorGfx.clear();
-    if(open){
-      this.doorGfx.fillStyle(0x00cc66); this.doorGfx.fillRect(BW/2-8,0,16,WALL);
-      this.doorGfx.fillStyle(0x00ff88); this.doorGfx.fillRect(BW/2-4,WALL-4,8,4);
-    } else {
-      this.doorGfx.fillStyle(0x332233); this.doorGfx.fillRect(BW/2-8,0,16,WALL);
-      this.doorGfx.fillStyle(0x553355); this.doorGfx.fillRect(BW/2-4,WALL/2-1,8,2);
-    }
-  }
-
-  nextRoom(){
+  buildRoom(){
     this.room++;
-    this.cleared=false;
-    this.boonUp=false;
-
-    this.enemies.forEach(e=>{ e.s?.destroy(); e.hbBg?.destroy(); e.hbFg?.destroy(); });
+    this.cleared=false; this.boonUp=false;
+    this.enemies.forEach(e=>{e.s?.destroy();e.hbBg?.destroy();e.hbFg?.destroy();});
     this.enemies=[];
-    this.projs.forEach(p=>p.g?.destroy());
-    this.projs=[];
-    this.orbs.forEach(o=>o.s?.destroy());
-    this.orbs=[];
+    this.projs.forEach(p=>p.s?.destroy()); this.projs=[];
+    this.orbs.forEach(o=>o.s?.destroy());  this.orbs=[];
+    if(this.bg) this.bg.destroy();
+    if(this.doorSpr) this.doorSpr.destroy();
 
-    this.drawTiles();
+    // Tiled floor
+    this.bg=this.add.graphics().setDepth(-1);
+    const ts=16;
+    for(let tx=WALL;tx<BW-WALL;tx+=ts)
+      for(let ty=WALL;ty<BH-WALL-16;ty+=ts)
+        this.add.image(tx+ts/2,ty+ts/2,'floor').setDepth(-1).setScale(1);
 
+    // Walls (solid color bands, sprites would tile weirdly)
+    this.bg.fillStyle(0x1a1a33);
+    this.bg.fillRect(0,0,BW,WALL);
+    this.bg.fillRect(0,BH-WALL,BW,WALL);
+    this.bg.fillRect(0,0,WALL,BH);
+    this.bg.fillRect(BW-WALL,0,WALL,BH);
+    // Wall top detail
+    this.bg.lineStyle(1,0x334466);
+    this.bg.strokeRect(WALL,WALL,BW-WALL*2,BH-WALL*2-16);
+
+    // Door sprite (top center)
+    this.doorSpr=this.add.image(BW/2,8,'door_closed').setDepth(1).setScale(1);
+
+    // Spawn enemies
     const boss=this.room%5===0;
     const cnt=boss?1:Phaser.Math.Between(3,4+Math.floor(this.room/3));
     for(let i=0;i<cnt;i++){
-      const def=boss
-        ?{...ENEMY_DEF[2],name:'BOSS',col:'#ff0000',hp:200,spd:40,dmg:22}
+      const def=boss?{...ENEMY_DEF[2],name:'BOSS',key:'demon',hp:200,spd:38,dmg:22}
         :ENEMY_DEF[Phaser.Math.Between(0,ENEMY_DEF.length-1)];
       this.spawnEnemy(def);
     }
 
     this.p.x=BW/2; this.p.y=BH-WALL-12;
-    this.roomTxt.setText(`ROOM ${this.room}`);
+    if(!this.pSprite){
+      this.pSprite=this.add.image(this.p.x,this.p.y,'player').setDepth(5);
+      this.atkGfx=this.add.graphics().setDepth(4);
+    }
+    if(this.roomLbl) this.roomLbl.setText(`ROOM ${this.room}`);
+  }
+
+  openDoor(){
+    this.doorSpr.setTexture('door_open');
   }
 
   spawnEnemy(def){
     let ex,ey,att=0;
     do{
-      ex=Phaser.Math.Between(WALL+12,BW-WALL-12);
-      ey=Phaser.Math.Between(WALL+12,BH-WALL-36);
+      ex=Phaser.Math.Between(WALL+10,BW-WALL-10);
+      ey=Phaser.Math.Between(WALL+10,BH-WALL-40);
       att++;
-    }while(Phaser.Math.Distance.Between(ex,ey,this.p.x,this.p.y)<50&&att<20);
+    }while(Phaser.Math.Distance.Between(ex,ey,this.p.x,this.p.y)<60&&att<20);
 
-    const sprKey = def.type==='skel'?'skel':def.type==='wisp'?'wisp':'demon';
-    const s = this.add.image(ex,ey,sprKey).setDepth(3);
-    const hbBg = this.add.graphics().setDepth(4);
-    const hbFg = this.add.graphics().setDepth(4);
-
+    const s=this.add.image(ex,ey,def.key).setDepth(3);
+    const hbBg=this.add.graphics().setDepth(4);
+    const hbFg=this.add.graphics().setDepth(4);
     const e={...def,x:ex,y:ey,maxHp:def.hp,
       aiT:Math.random()*0.5,projT:1,chargeT:0,charging:false,cvx:0,cvy:0,dead:false,
-      s,hbBg,hbFg,flashT:0};
+      s,hbBg,hbFg};
     this.enemies.push(e);
-    this.updateEnemyHp(e);
+    this.drawHpBar(e);
   }
 
-  updateEnemyHp(e){
+  drawHpBar(e){
     e.hbBg.clear(); e.hbFg.clear();
-    if(e.dead) return;
-    e.hbBg.fillStyle(0x330000); e.hbBg.fillRect(e.x-7,e.y-9,14,2);
+    if(e.dead)return;
+    const bw=14;
+    e.hbBg.fillStyle(0x220000); e.hbBg.fillRect(e.x-bw/2,e.y-12,bw,3);
     const pct=Math.max(0,e.hp/e.maxHp);
-    e.hbFg.fillStyle(0xff3333); e.hbFg.fillRect(e.x-7,e.y-9,Math.round(14*pct),2);
+    const col=pct>0.6?0x44cc44:pct>0.3?0xffaa00:0xff2222;
+    e.hbFg.fillStyle(col); e.hbFg.fillRect(e.x-bw/2,e.y-12,Math.round(bw*pct),3);
   }
 
   setupUI(){
-    // HP bar
-    this.hpBg  = this.add.graphics().setDepth(10);
-    this.hpFg  = this.add.graphics().setDepth(10);
-    this.hpTxt = this.add.text(4,3,'',{fontFamily:"'Press Start 2P'",fontSize:'5px',fill:'#fff'}).setDepth(11);
-    this.roomTxt=this.add.text(BW-4,3,'',{fontFamily:"'Press Start 2P'",fontSize:'5px',fill:'#aaaaff'}).setOrigin(1,0).setDepth(11);
+    // HP bg
+    this.uiHpBg=this.add.graphics().setDepth(10);
+    this.uiHpFg=this.add.graphics().setDepth(10);
+    this.uiHpTxt=this.add.text(3,3,'',{fontFamily:"'Press Start 2P'",fontSize:'5px',fill:'#ffffff'}).setDepth(11);
+    this.roomLbl=this.add.text(BW-3,3,`ROOM ${this.room}`,{fontFamily:"'Press Start 2P'",fontSize:'5px',fill:'#aaaaff'}).setOrigin(1,0).setDepth(11);
 
-    // soul slots (bottom bar)
-    this.slotBg = this.add.graphics().setDepth(10);
-    this.slotBg.fillStyle(0x000000,0.8); this.slotBg.fillRect(0,BH-20,BW,20);
-    this.slotBg.lineStyle(1,0x333366); this.slotBg.lineBetween(0,BH-20,BW,BH-20);
+    // Companion bar (bottom)
+    const bbar=this.add.graphics().setDepth(10);
+    bbar.fillStyle(0x000000,0.85); bbar.fillRect(0,BH-18,BW,18);
+    bbar.lineStyle(1,0x223355); bbar.lineBetween(0,BH-18,BW,BH-18);
 
-    this.slotTxts=[];
+    this.soulSlots=[];
     for(let i=0;i<4;i++){
-      const sx=4+i*(BW/4);
-      this.slotTxts.push({
+      const sx=2+i*(BW/4);
+      this.soulSlots.push({
         ico:this.add.graphics().setDepth(11),
-        nm: this.add.text(sx+10,BH-18,'',{fontFamily:"'Press Start 2P'",fontSize:'4px',fill:'#ffffff'}).setDepth(12),
-        ds: this.add.text(sx+10,BH-11,'',{fontFamily:"'Press Start 2P'",fontSize:'4px',fill:'#aaaaaa'}).setDepth(12),
+        nm: this.add.text(sx+11,BH-16,'',{fontFamily:"'Press Start 2P'",fontSize:'4px',fill:'#ffffff'}).setDepth(12),
+        ds: this.add.text(sx+11,BH-9,'',{fontFamily:"'Press Start 2P'",fontSize:'3px',fill:'#aaaacc'}).setDepth(12),
         sx,
       });
     }
@@ -332,27 +217,24 @@ class GameScene extends Phaser.Scene {
 
   redrawUI(){
     const p=this.p;
-    // HP
-    this.hpBg.clear(); this.hpBg.fillStyle(0x330000); this.hpBg.fillRect(3,11,60,4);
-    this.hpFg.clear();
+    this.uiHpBg.clear(); this.uiHpBg.fillStyle(0x220000); this.uiHpBg.fillRect(2,11,64,5);
+    this.uiHpFg.clear();
     const pct=Math.max(0,p.hp/p.maxHp);
-    this.hpFg.fillStyle(pct>0.6?0x44cc44:pct>0.3?0xffaa00:0xff2222);
-    this.hpFg.fillRect(3,11,Math.round(60*pct),4);
-    this.hpTxt.setText(`HP ${Math.max(0,p.hp)}/${p.maxHp}`);
+    this.uiHpFg.fillStyle(pct>0.6?0x44cc44:pct>0.3?0xffaa00:0xff2222);
+    this.uiHpFg.fillRect(2,11,Math.round(64*pct),5);
+    this.uiHpTxt.setText(`HP ${Math.max(0,p.hp)}/${p.maxHp}`);
 
-    // Soul slots
-    this.slotTxts.forEach((sl,i)=>{
-      const sx=sl.sx;
+    this.soulSlots.forEach((sl,i)=>{
       sl.ico.clear();
       if(this.souls[i]){
         const s=this.souls[i];
-        const c=parseInt('0x'+s.col.toString(16).padStart(6,'0'));
-        sl.ico.fillStyle(c); sl.ico.fillRect(sx,BH-18,6,6);
-        sl.nm.setText(s.name.slice(0,10)).setFill('#ffffff');
-        sl.ds.setText(s.desc.slice(0,12)).setFill('#aaaacc');
-      } else {
-        sl.ico.fillStyle(0x222244); sl.ico.fillRect(sx,BH-18,6,6);
-        sl.nm.setText('EMPTY').setFill('#333355');
+        const c='#'+s.col.toString(16).padStart(6,'0');
+        sl.ico.fillStyle(s.col); sl.ico.fillRect(sl.sx,BH-16,7,7);
+        sl.nm.setText(s.name.slice(0,11)).setFill('#ffffff');
+        sl.ds.setText(s.desc.slice(0,14)).setFill('#aaaacc');
+      }else{
+        sl.ico.fillStyle(0x111133); sl.ico.fillRect(sl.sx,BH-16,7,7);
+        sl.nm.setText('EMPTY').setFill('#223');
         sl.ds.setText('');
       }
     });
@@ -367,12 +249,16 @@ class GameScene extends Phaser.Scene {
     this.moveProjs(dt);
     this.animOrbs(dt);
     this.checkClear();
+    // Update player sprite
     this.pSprite.setPosition(this.p.x,this.p.y);
-    if(this.p.dodging) this.pSprite.setAlpha(0.5); else this.pSprite.setAlpha(1);
+    this.pSprite.setAlpha(this.p.dodging?0.45:1);
+    // flip sprite based on facing
+    if(this.p.fx<0) this.pSprite.setFlipX(true);
+    else if(this.p.fx>0) this.pSprite.setFlipX(false);
     this.redrawUI();
   }
 
-  playerDmg(){
+  pDmg(){
     let d=20;
     if(this.souls.find(s=>s&&s.id==='fury')) d*=1.15;
     if(this.p.berserker&&this.p.hp<this.p.maxHp*0.5) d*=1.25;
@@ -385,22 +271,21 @@ class GameScene extends Phaser.Scene {
     if(p.dodging){
       p.dodgeDur-=dt;
       if(p.dodgeDur<=0) p.dodging=false;
-      p.x=Phaser.Math.Clamp(p.x+p.dvx*dt,WALL+4,BW-WALL-4);
-      p.y=Phaser.Math.Clamp(p.y+p.dvy*dt,WALL+4,BH-WALL-24);
+      p.x=Phaser.Math.Clamp(p.x+p.dvx*dt,WALL+8,BW-WALL-8);
+      p.y=Phaser.Math.Clamp(p.y+p.dvy*dt,WALL+8,BH-WALL-26);
       return;
     }
     let vx=0,vy=0;
     if(k.lt.isDown)vx-=1; if(k.rt.isDown)vx+=1;
     if(k.up.isDown)vy-=1; if(k.dn.isDown)vy+=1;
     if(vx||vy){const l=Math.sqrt(vx*vx+vy*vy);vx/=l;vy/=l;p.fx=vx;p.fy=vy;}
-    p.x=Phaser.Math.Clamp(p.x+vx*p.spd*dt,WALL+4,BW-WALL-4);
-    p.y=Phaser.Math.Clamp(p.y+vy*p.spd*dt,WALL+4,BH-WALL-24);
-
+    p.x=Phaser.Math.Clamp(p.x+vx*p.spd*dt,WALL+8,BW-WALL-8);
+    p.y=Phaser.Math.Clamp(p.y+vy*p.spd*dt,WALL+8,BH-WALL-26);
     p.dodgeT=Math.max(0,p.dodgeT-dt);
     if(Phaser.Input.Keyboard.JustDown(k.dodge)&&p.dodgeT<=0){
       const ddx=vx||p.fx,ddy=vy||p.fy,l=Math.sqrt(ddx*ddx+ddy*ddy)||1;
-      p.dvx=(ddx/l)*160;p.dvy=(ddy/l)*160;
-      p.dodging=true;p.dodgeDur=0.22;
+      p.dvx=(ddx/l)*180; p.dvy=(ddy/l)*180;
+      p.dodging=true; p.dodgeDur=0.2;
       p.dodgeT=this.souls.find(s=>s&&s.id==='shadow')?p.dodgeCd*0.7:p.dodgeCd;
     }
   }
@@ -408,14 +293,15 @@ class GameScene extends Phaser.Scene {
   doAttack(dt){
     const p=this.p;
     p.atkT=Math.max(0,p.atkT-dt);
-    if(!Phaser.Input.Keyboard.JustDown(this.keys.atk)||p.atkT>0) return;
+    if(!Phaser.Input.Keyboard.JustDown(this.keys.atk)||p.atkT>0)return;
     p.atkT=p.atkCd;
-    const dmg=this.playerDmg(),range=22;
+    const dmg=this.pDmg(), range=26;
 
-    // attack flash
-    this.atkFlash.clear().setPosition(p.x+p.fx*12,p.y+p.fy*12);
-    this.atkFlash.fillStyle(0xffffff,0.8);this.atkFlash.fillRect(-6,-6,12,12);
-    this.tweens.add({targets:this.atkFlash,alpha:0,duration:100,onComplete:()=>this.atkFlash.setAlpha(1)});
+    this.atkGfx.clear();
+    this.atkGfx.fillStyle(0xffffff,0.7);
+    this.atkGfx.fillRect(p.x+p.fx*14-5,p.y+p.fy*14-5,10,10);
+    this.tweens.add({targets:this.atkGfx,alpha:0,duration:120,
+      onComplete:()=>{this.atkGfx.setAlpha(1);}});
 
     this.enemies.forEach(e=>{
       if(e.dead)return;
@@ -424,24 +310,23 @@ class GameScene extends Phaser.Scene {
       const dot=(dx/dist)*p.fx+(dy/dist)*p.fy;
       if(dot<0.1)return;
       e.hp-=dmg;
-      this.floatNum(e.x,e.y-8,dmg,'#ffffff');
+      this.floatNum(e.x,e.y-10,dmg,'#ffffff');
       this.tweens.add({targets:e.s,alpha:0.2,yoyo:true,duration:60});
       if(e.hp<=0){
         e.dead=true;
-        p.hp=Math.min(p.maxHp,p.hp+p.lifesteal);
+        this.p.hp=Math.min(this.p.maxHp,this.p.hp+this.p.lifesteal);
         e.s.destroy();e.hbBg.destroy();e.hbFg.destroy();
-        this.dropOrb(e);
-      } else {
-        this.updateEnemyHp(e);
+        if(Math.random()<0.4) this.dropOrb(e);
+      }else{
+        this.drawHpBar(e);
       }
     });
   }
 
   dropOrb(e){
-    if(Math.random()>0.4)return;
     const sd=SOUL_DEF[e.soul];
     const s=this.add.image(e.x,e.y,'orb').setDepth(3);
-    this.orbs.push({id:e.soul,name:sd.name,desc:sd.desc,col:sd.col,x:e.x,y:e.y,t:0,s});
+    this.orbs.push({id:e.soul,name:sd.name,desc:sd.desc,col:sd.col,x:e.x,y:e.y,s,baseY:e.y});
   }
 
   moveEnemies(dt){
@@ -451,61 +336,60 @@ class GameScene extends Phaser.Scene {
       e.aiT-=dt;
       const dx=p.x-e.x,dy=p.y-e.y,dist=Math.sqrt(dx*dx+dy*dy);
       const nx=dx/dist,ny=dy/dist;
-
       if(e.ranged){
         e.projT-=dt;
-        const dir=dist>70?1:dist<40?-1:0;
-        e.x+=nx*dir*e.spd*dt;e.y+=ny*dir*e.spd*dt;
+        const dir=dist>72?1:dist<36?-1:0;
+        e.x+=nx*dir*e.spd*dt; e.y+=ny*dir*e.spd*dt;
         if(e.projT<=0){e.projT=2;this.fireProj(e.x,e.y,nx,ny,e.dmg);}
-      } else if(e.charge){
+        e.s.setFlipX(dx<0);
+      }else if(e.charge){
         if(!e.charging){
-          e.x+=nx*e.spd*dt;e.y+=ny*e.spd*dt;
-          if(e.aiT<=0&&dist<60){e.aiT=2.5;e.charging=true;e.chargeT=0.4;e.cvx=nx*120;e.cvy=ny*120;}
-        } else {
-          e.chargeT-=dt;e.x+=e.cvx*dt;e.y+=e.cvy*dt;
-          if(e.chargeT<=0)e.charging=false;
-          if(dist<10&&!p.dodging)this.hurtPlayer(e.dmg);
+          e.x+=nx*e.spd*dt; e.y+=ny*e.spd*dt;
+          if(e.aiT<=0&&dist<70){e.aiT=2.5;e.charging=true;e.chargeT=0.4;e.cvx=nx*130;e.cvy=ny*130;}
+        }else{
+          e.chargeT-=dt; e.x+=e.cvx*dt; e.y+=e.cvy*dt;
+          if(e.chargeT<=0) e.charging=false;
+          if(dist<12&&!p.dodging) this.hurtPlayer(e.dmg);
         }
-      } else {
-        e.x+=nx*e.spd*dt;e.y+=ny*e.spd*dt;
-        if(dist<10&&e.aiT<=0){e.aiT=1.2;if(!p.dodging)this.hurtPlayer(e.dmg);}
+        e.s.setFlipX(dx<0);
+      }else{
+        e.x+=nx*e.spd*dt; e.y+=ny*e.spd*dt;
+        if(dist<12&&e.aiT<=0){e.aiT=1.2;if(!p.dodging)this.hurtPlayer(e.dmg);}
+        e.s.setFlipX(dx<0);
       }
-
-      e.x=Phaser.Math.Clamp(e.x,WALL+4,BW-WALL-4);
-      e.y=Phaser.Math.Clamp(e.y,WALL+4,BH-WALL-28);
+      e.x=Phaser.Math.Clamp(e.x,WALL+6,BW-WALL-6);
+      e.y=Phaser.Math.Clamp(e.y,WALL+6,BH-WALL-30);
       e.s.setPosition(e.x,e.y);
-      this.updateEnemyHp(e);
+      this.drawHpBar(e);
     });
   }
 
   fireProj(x,y,vx,vy,dmg){
-    const g=this.add.graphics().setDepth(3);
-    g.fillStyle(0xcc44ff);g.fillRect(-2,-2,4,4);
-    this.projs.push({x,y,vx:vx*70,vy:vy*70,dmg,life:3,g});
+    const s=this.add.image(x,y,'proj').setDepth(3);
+    this.projs.push({x,y,vx:vx*80,vy:vy*80,dmg,life:3,s});
   }
 
   moveProjs(dt){
     const p=this.p;
     this.projs=this.projs.filter(pr=>{
-      pr.x+=pr.vx*dt;pr.y+=pr.vy*dt;pr.life-=dt;
-      pr.g.setPosition(pr.x,pr.y);
-      if(pr.x<WALL||pr.x>BW-WALL||pr.y<WALL||pr.y>BH-WALL||pr.life<=0){pr.g.destroy();return false;}
-      if(!p.dodging&&Phaser.Math.Distance.Between(pr.x,pr.y,p.x,p.y)<6){
-        this.hurtPlayer(pr.dmg);pr.g.destroy();return false;
+      pr.x+=pr.vx*dt; pr.y+=pr.vy*dt; pr.life-=dt;
+      pr.s.setPosition(pr.x,pr.y);
+      if(pr.x<WALL||pr.x>BW-WALL||pr.y<WALL||pr.y>BH-WALL||pr.life<=0){pr.s.destroy();return false;}
+      if(!p.dodging&&Phaser.Math.Distance.Between(pr.x,pr.y,p.x,p.y)<8){
+        this.hurtPlayer(pr.dmg);pr.s.destroy();return false;
       }
       return true;
     });
   }
 
   animOrbs(dt){
-    this.orbAnim=(this.orbAnim||0)+dt;
+    this.orbT=(this.orbT||0)+dt;
     this.orbs=this.orbs.filter(o=>{
-      if(o.absorbed)return false;
-      // bob up/down
-      o.s.setPosition(o.x,o.y+Math.sin(this.orbAnim*4)*1);
-      o.s.setScale(0.9+Math.sin(this.orbAnim*3)*0.1);
-      if(Phaser.Math.Distance.Between(o.x,o.y,this.p.x,this.p.y)<8){
-        o.absorbed=true;o.s.destroy();
+      if(o.gone)return false;
+      o.s.setPosition(o.x,o.baseY+Math.sin(this.orbT*3)*2);
+      o.s.setScale(0.9+Math.sin(this.orbT*4)*0.05);
+      if(Phaser.Math.Distance.Between(o.x,o.baseY,this.p.x,this.p.y)<10){
+        o.gone=true;o.s.destroy();
         this.absorbSoul(o);return false;
       }
       return true;
@@ -515,21 +399,21 @@ class GameScene extends Phaser.Scene {
   absorbSoul(o){
     const soul={id:o.id,name:o.name,desc:o.desc,col:SOUL_DEF[o.id].col};
     const slot=this.souls.findIndex(s=>!s);
-    if(slot!==-1)this.souls[slot]=soul;
+    if(slot!==-1) this.souls[slot]=soul;
     else this.souls[0]=soul;
-    this.float(this.p.x,this.p.y-12,`SOUL: ${soul.name}`,soul.col);
+    this.float(this.p.x,this.p.y-14,`SOUL: ${soul.name}`,soul.col);
   }
 
   hurtPlayer(amt){
     const p=this.p;
     let d=Math.floor(amt*(1-(p.dmgRes||0)));
-    if(this.souls.find(s=>s&&s.id==='bone'))d=Math.floor(d*0.9);
+    if(this.souls.find(s=>s&&s.id==='bone')) d=Math.floor(d*0.9);
     p.hp-=d;
     this.floatNum(p.x,p.y-10,d,0xff3333);
-    this.cameras.main.shake(80,0.006);
+    this.cameras.main.shake(70,0.007);
     if(p.hp<=0){
-      p.hp=0;p.dead=true;
-      this.pSprite.setTint(0xff0000);
+      p.hp=0; p.dead=true;
+      this.pSprite.setTint(0xff2200);
       this.time.delayedCall(600,()=>this.scene.start('Over',{room:this.room}));
     }
   }
@@ -538,74 +422,69 @@ class GameScene extends Phaser.Scene {
     if(this.cleared||this.boonUp)return;
     if(this.enemies.length>0&&this.enemies.every(e=>e.dead)){
       this.cleared=true;
-      this.setDoor(true);
+      this.openDoor();
       this.float(BW/2,BH/2-30,'ROOM CLEAR!',0x00ff88);
     }
-    if(this.cleared&&this.p.y<WALL+6&&Math.abs(this.p.x-BW/2)<10)
+    if(this.cleared&&this.p.y<WALL+8&&Math.abs(this.p.x-BW/2)<14)
       this.showBoons();
   }
 
   showBoons(){
     if(this.boonUp)return;
     this.boonUp=true;
-    const picks=Phaser.Utils.Array.Shuffle([...BOON_LIST]).slice(0,3);
+    const picks=Phaser.Utils.Array.Shuffle([...BOONS]).slice(0,3);
 
-    // dark overlay
     const ov=this.add.graphics().setDepth(30);
-    ov.fillStyle(0x000000,0.85);ov.fillRect(0,0,BW,BH);
+    ov.fillStyle(0x000000,0.88); ov.fillRect(0,0,BW,BH);
+    this.add.text(BW/2,12,'CHOOSE A BOON',{fontFamily:"'Press Start 2P'",fontSize:'7px',fill:'#cc88ff'}).setOrigin(0.5).setDepth(31);
 
-    this.add.text(BW/2,15,'CHOOSE A BOON',{fontFamily:"'Press Start 2P'",fontSize:'7px',fill:'#cc88ff'})
-      .setOrigin(0.5).setDepth(31);
-
-    const objs=[];
+    const objs=[ov];
     picks.forEach((b,i)=>{
-      const cx=20+i*92, cy=60;
+      const cx=8+i*104, cy=32;
       const bg=this.add.graphics().setDepth(31);
-      const drawCard=(sel)=>{
+      const draw=(hl)=>{
         bg.clear();
-        bg.fillStyle(sel?0x331155:0x1a0a33);
-        bg.fillRect(cx,cy,84,70);
-        bg.lineStyle(1,sel?0xaa55ff:0x553377);
-        bg.strokeRect(cx,cy,84,70);
+        bg.fillStyle(hl?0x2a0a44:0x130020);
+        bg.fillRect(cx,cy,96,72);
+        bg.lineStyle(1,hl?0xaa55ff:0x441166);
+        bg.strokeRect(cx,cy,96,72);
       };
-      drawCard(false);
-      const nm=this.add.text(cx+4,cy+6,b.name,{fontFamily:"'Press Start 2P'",fontSize:'5px',fill:'#cc88ff',wordWrap:{width:76}}).setDepth(32);
-      const ds=this.add.text(cx+4,cy+30,b.desc,{fontFamily:"'Press Start 2P'",fontSize:'4px',fill:'#aaaacc',wordWrap:{width:76}}).setDepth(32);
-      const hint=this.add.text(cx+4,cy+58,`[${i+1}]`,{fontFamily:"'Press Start 2P'",fontSize:'5px',fill:'#555577'}).setDepth(32);
+      draw(false);
+      const nm=this.add.text(cx+4,cy+6,b.name,{fontFamily:"'Press Start 2P'",fontSize:'5px',fill:'#cc88ff',wordWrap:{width:88}}).setDepth(32);
+      const ds=this.add.text(cx+4,cy+28,b.desc,{fontFamily:"'Press Start 2P'",fontSize:'4px',fill:'#aaaacc',wordWrap:{width:88}}).setDepth(32);
+      const hint=this.add.text(cx+4,cy+60,`[${i+1}]`,{fontFamily:"'Press Start 2P'",fontSize:'5px',fill:'#555577'}).setDepth(32);
       objs.push(bg,nm,ds,hint);
-
-      const zone=this.add.zone(cx+42,cy+35,84,70).setInteractive().setDepth(32);
-      zone.on('pointerover',()=>drawCard(true));
-      zone.on('pointerout',()=>drawCard(false));
+      const zone=this.add.zone(cx+48,cy+36,96,72).setInteractive().setDepth(32);
+      zone.on('pointerover',()=>draw(true));
+      zone.on('pointerout',()=>draw(false));
       zone.on('pointerdown',()=>pick(i));
       objs.push(zone);
     });
 
     const kh=(ev)=>{if(ev.key==='1')pick(0);if(ev.key==='2')pick(1);if(ev.key==='3')pick(2);};
     window.addEventListener('keydown',kh);
-
     const pick=(i)=>{
       window.removeEventListener('keydown',kh);
       picks[i].apply(this.p);
-      objs.forEach(o=>o.destroy());ov.destroy();
+      objs.forEach(o=>o.destroy());
       this.boonUp=false;
-      this.nextRoom();
+      this.buildRoom();
     };
   }
 
   floatNum(x,y,n,col){
     const c=typeof col==='number'?'#'+col.toString(16).padStart(6,'0'):col;
-    const t=this.add.text(x,y,`-${n}`,{fontFamily:"'Press Start 2P'",fontSize:'5px',fill:c}).setOrigin(0.5).setDepth(20);
-    this.tweens.add({targets:t,y:y-16,alpha:0,duration:600,onComplete:()=>t.destroy()});
+    const t=this.add.text(x,y,String(n),{fontFamily:"'Press Start 2P'",fontSize:'5px',fill:c}).setOrigin(0.5).setDepth(20);
+    this.tweens.add({targets:t,y:y-18,alpha:0,duration:700,onComplete:()=>t.destroy()});
   }
   float(x,y,msg,col){
     const c=typeof col==='number'?'#'+col.toString(16).padStart(6,'0'):col;
     const t=this.add.text(x,y,msg,{fontFamily:"'Press Start 2P'",fontSize:'6px',fill:c}).setOrigin(0.5).setDepth(20);
-    this.tweens.add({targets:t,y:y-20,alpha:0,duration:1000,onComplete:()=>t.destroy()});
+    this.tweens.add({targets:t,y:y-22,alpha:0,duration:1100,onComplete:()=>t.destroy()});
   }
 }
 
-// ─── GAME OVER SCENE ─────────────────────────────────────────
+// ─── GAME OVER ───────────────────────────────────────────────
 class OverScene extends Phaser.Scene {
   constructor(){super({key:'Over'});}
   init(d){this.d=d;}
@@ -613,21 +492,22 @@ class OverScene extends Phaser.Scene {
     const {room}=this.d;
     const r=parseInt(localStorage.getItem('sb_runs')||'0')+1;
     const b=Math.max(parseInt(localStorage.getItem('sb_best')||'0'),room);
-    localStorage.setItem('sb_runs',r);localStorage.setItem('sb_best',b);
+    localStorage.setItem('sb_runs',r);
+    localStorage.setItem('sb_best',b);
 
     const g=this.add.graphics();
-    g.fillStyle(0x000000);g.fillRect(0,0,BW,BH);
-    g.fillStyle(0x110000);g.fillRect(20,20,BW-40,BH-40);
-    g.lineStyle(2,0x440000);g.strokeRect(20,20,BW-40,BH-40);
+    g.fillStyle(0x000000); g.fillRect(0,0,BW,BH);
+    g.fillStyle(0x0d0008); g.fillRect(16,16,BW-32,BH-32);
+    g.lineStyle(2,0x330022); g.strokeRect(16,16,BW-32,BH-32);
 
-    this.add.text(BW/2,45,'YOU DIED',{fontFamily:"'Press Start 2P'",fontSize:'14px',fill:'#ff3333',
-      shadow:{x:2,y:2,color:'#440000',fill:true}}).setOrigin(0.5);
-    this.add.text(BW/2,85,`ROOM ${room}`,{fontFamily:"'Press Start 2P'",fontSize:'8px',fill:'#cccccc'}).setOrigin(0.5);
-    this.add.text(BW/2,105,`BEST: ${b}   RUNS: ${r}`,{fontFamily:"'Press Start 2P'",fontSize:'6px',fill:'#888899'}).setOrigin(0.5);
+    this.add.text(BW/2,38,'YOU DIED',{fontFamily:"'Press Start 2P'",fontSize:'14px',fill:'#ff3333',
+      shadow:{x:2,y:2,color:'#330000',fill:true}}).setOrigin(0.5);
+    this.add.text(BW/2,80,`ROOM ${room}`,{fontFamily:"'Press Start 2P'",fontSize:'8px',fill:'#cccccc'}).setOrigin(0.5);
+    this.add.text(BW/2,100,`BEST ${b}   RUNS ${r}`,{fontFamily:"'Press Start 2P'",fontSize:'6px',fill:'#888899'}).setOrigin(0.5);
 
-    const btn=this.add.text(BW/2,140,'[ TRY AGAIN ]',{fontFamily:"'Press Start 2P'",fontSize:'8px',fill:'#4488ff'}).setOrigin(0.5);
+    const btn=this.add.text(BW/2,135,'[ TRY AGAIN ]',{fontFamily:"'Press Start 2P'",fontSize:'8px',fill:'#4488ff'}).setOrigin(0.5);
     this.tweens.add({targets:btn,alpha:0.3,yoyo:true,duration:600,repeat:-1});
-    this.add.text(BW/2,162,'M - MENU',{fontFamily:"'Press Start 2P'",fontSize:'5px',fill:'#333355'}).setOrigin(0.5);
+    this.add.text(BW/2,158,'M - MENU',{fontFamily:"'Press Start 2P'",fontSize:'5px',fill:'#333355'}).setOrigin(0.5);
 
     this.input.keyboard.once('keydown-ENTER',()=>this.scene.start('Game'));
     this.input.keyboard.once('keydown-SPACE',()=>this.scene.start('Game'));
@@ -640,9 +520,8 @@ class OverScene extends Phaser.Scene {
 
 // ─── BOOT ────────────────────────────────────────────────────
 new Phaser.Game({
-  type:Phaser.CANVAS,
-  width:BW, height:BH,
-  zoom:ZOOM,
+  type:Phaser.AUTO,
+  width:BW, height:BH, zoom:ZOOM,
   pixelArt:true,
   backgroundColor:'#000000',
   scene:[GameScene,OverScene],
