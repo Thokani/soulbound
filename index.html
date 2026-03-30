@@ -4,34 +4,60 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SOULBOUND</title>
-<script src="https://cdn.jsdelivr.net/npm/phaser@3.70.0/dist/phaser.min.js"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { background: #0a0a0a; display: flex; justify-content: center; align-items: center; min-height: 100vh; overflow: hidden; }
+  body { background: #0a0a0a; display: flex; justify-content: center; align-items: center; min-height: 100vh; overflow: hidden; font-family: monospace; }
   canvas { display: block; }
+  #menu {
+    position: fixed; inset: 0;
+    background: #0a0a0a;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    z-index: 100;
+  }
+  #menu h1 { font-size: 56px; color: #aaaaff; letter-spacing: 6px; text-shadow: 0 0 30px #4444aa; margin-bottom: 12px; }
+  #menu p { color: #555577; font-size: 15px; margin-bottom: 8px; }
+  #menu .controls { color: #666688; font-size: 13px; margin: 20px 0 6px; }
+  #menu .best { color: #444466; font-size: 13px; margin-bottom: 32px; }
   #play-btn {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, 120px);
-    background: #2244aa;
-    color: #fff;
-    border: none;
-    border-radius: 8px;
-    font-size: 22px;
-    font-family: monospace;
-    font-weight: bold;
-    padding: 14px 40px;
-    cursor: pointer;
-    z-index: 999;
-    letter-spacing: 2px;
+    background: #2244aa; color: #fff; border: none; border-radius: 8px;
+    font-size: 22px; font-family: monospace; font-weight: bold;
+    padding: 16px 50px; cursor: pointer; letter-spacing: 3px;
+    transition: background 0.15s;
   }
   #play-btn:hover { background: #4466dd; }
+  #play-btn:active { background: #6688ff; }
 </style>
 </head>
 <body>
-<button id="play-btn" onclick="window.startSoulbound && window.startSoulbound()">▶ PLAY</button>
+<div id="menu">
+  <h1>SOULBOUND</h1>
+  <p>A roguelike about absorbing souls</p>
+  <div class="controls">WASD — Move &nbsp;|&nbsp; SPACE — Attack &nbsp;|&nbsp; SHIFT — Dodge</div>
+  <div class="controls">Kill enemies → absorb their souls → gain companions</div>
+  <div class="controls">Walk through the top door to advance rooms</div>
+  <div class="best" id="best-text"></div>
+  <button id="play-btn">▶ &nbsp;PLAY</button>
+</div>
+
 <script>
+// Show best run stats
+(function() {
+  const runs = localStorage.getItem('soulbound_runs') || 0;
+  const best = localStorage.getItem('soulbound_best') || 0;
+  if (runs > 0) document.getElementById('best-text').textContent = `Runs: ${runs}   Best Room: ${best}`;
+})();
+
+// Click play → load Phaser and start game
+document.getElementById('play-btn').addEventListener('click', function() {
+  document.getElementById('menu').style.display = 'none';
+  const s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/phaser@3.70.0/dist/phaser.min.js';
+  s.onload = initGame;
+  document.head.appendChild(s);
+});
+
+function initGame() {
 // ============================================================
 // SOULBOUND - A top-down roguelike
 // WASD = move, SPACE = attack, SHIFT = dodge roll
@@ -737,62 +763,7 @@ class GameScene extends Phaser.Scene {
   }
 }
 
-// ============================================================
-// MENU SCENE
-// ============================================================
-class MenuScene extends Phaser.Scene {
-  constructor() { super('Menu'); }
-  create() {
-    const bg = this.add.graphics();
-    bg.fillStyle(0x0a0a0a);
-    bg.fillRect(0,0,W,H);
-    // Title glow
-    for (let i = 5; i > 0; i--) {
-      this.add.text(W/2, 180, 'SOULBOUND', {
-        fontSize:'56px', fill:'#'+Math.floor(0x4444aa*i/5).toString(16).padStart(6,'0'),
-        fontFamily:'monospace', fontStyle:'bold'
-      }).setOrigin(0.5).setAlpha(0.3/i);
-    }
-    this.add.text(W/2, 180, 'SOULBOUND', {
-      fontSize:'56px', fill:'#aaaaff', fontFamily:'monospace', fontStyle:'bold'
-    }).setOrigin(0.5);
-
-    this.add.text(W/2, 255, 'A roguelike about absorbing souls', {
-      fontSize:'16px', fill:'#666699', fontFamily:'monospace'
-    }).setOrigin(0.5);
-
-    this.add.text(W/2, 340, 'WASD — Move      SPACE — Attack      SHIFT — Dodge', {
-      fontSize:'14px', fill:'#888899', fontFamily:'monospace'
-    }).setOrigin(0.5);
-    this.add.text(W/2, 365, 'Absorb soul orbs to gain companions', {
-      fontSize:'14px', fill:'#888899', fontFamily:'monospace'
-    }).setOrigin(0.5);
-    this.add.text(W/2, 390, 'Walk through the top door to advance', {
-      fontSize:'14px', fill:'#888899', fontFamily:'monospace'
-    }).setOrigin(0.5);
-
-    const best = localStorage.getItem('soulbound_best') || 0;
-    const runs = localStorage.getItem('soulbound_runs') || 0;
-    if (runs > 0) {
-      this.add.text(W/2, 445, `Runs: ${runs}   Best Room: ${best}`, {
-        fontSize:'14px', fill:'#555577', fontFamily:'monospace'
-      }).setOrigin(0.5);
-    }
-
-    const startGame = () => {
-      document.getElementById('play-btn').style.display = 'none';
-      this.scene.start('Game');
-    };
-
-    // HTML button — guaranteed to work
-    const btn = document.getElementById('play-btn');
-    btn.style.display = 'block';
-    btn.onclick = startGame;
-
-    this.input.keyboard.once('keydown-ENTER', startGame);
-    this.input.keyboard.once('keydown-SPACE', startGame);
-  }
-}
+// Menu is now HTML — no Phaser scene needed
 
 // ============================================================
 // GAME OVER SCENE
@@ -834,28 +805,28 @@ class GameOverScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     this.input.keyboard.once('keydown-ENTER', () => this.scene.start('Game'));
-    this.input.keyboard.once('keydown-M', () => this.scene.start('Menu'));
+    this.input.keyboard.once('keydown-M', () => {
+      document.getElementById('menu').style.display = 'flex';
+      const best2 = localStorage.getItem('soulbound_best') || 0;
+      const runs2 = localStorage.getItem('soulbound_runs') || 0;
+      document.getElementById('best-text').textContent = `Runs: ${runs2}   Best Room: ${best2}`;
+      this.scene.stop();
+    });
   }
 }
 
 // ============================================================
 // BOOT
 // ============================================================
-const config = {
-  type: Phaser.AUTO,
-  width: W, height: H,
-  backgroundColor: '#0a0a0a',
-  parent: document.body,
-  scene: [MenuScene, GameScene, GameOverScene],
-};
-const game = new Phaser.Game(config);
-
-// Global hook so HTML button can trigger game start
-window.startSoulbound = () => {
-  document.getElementById('play-btn').style.display = 'none';
-  game.scene.stop('Menu');
-  game.scene.start('Game');
-};
+  const config = {
+    type: Phaser.AUTO,
+    width: W, height: H,
+    backgroundColor: '#0a0a0a',
+    parent: document.body,
+    scene: [GameScene, GameOverScene],
+  };
+  new Phaser.Game(config);
+} // end initGame
 </script>
 </body>
 </html>
