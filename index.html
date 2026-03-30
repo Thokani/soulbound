@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SOULBOUND</title>
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.70.0/dist/phaser.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0a0a0a; display: flex; justify-content: center; align-items: center; min-height: 100vh; overflow: hidden; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script>
+// ============================================================
+// SOULBOUND - A top-down roguelike
+// WASD = move, SPACE = attack, SHIFT = dodge roll
+// Absorb enemy souls, pick boons, survive as long as you can
+// ============================================================
+
+const W = 900, H = 600;
+const WALL = 50;
+
+// ---- BOON DEFINITIONS ----
+const BOONS = [
+  { id:'iron_skin',    name:'Iron Skin',     desc:'+20 Max HP',             apply: p => { p.maxHp += 20; p.hp = Math.min(p.hp + 20, p.maxHp); } },
+  { id:'swift',        name:'Swift Strikes', desc:'Attack cooldown -0.1s',  apply: p => { p.attackCooldown = Math.max(0.15, p.attackCooldown - 0.1); } },
+  { id:'lifesteal',    name:'Lifesteal',     desc:'Heal 5 HP per kill',     apply: p => { p.lifesteal += 5; } },
+  { id:'berserker',    name:'Berserker',     desc:'+25% dmg below 50% HP',  apply: p => { p.berserker = true; } },
+  { id:'soul_link',    name:'Soul Link',     desc:'+5% dmg per companion',  apply: p => { p.soulLink = true; } },
+  { id:'toughness',    name:'Toughness',     desc:'10% less damage taken',  apply: p => { p.damageReduction = Math.min(0.5, (p.damageReduction||0) + 0.10); } },
+  { id:'momentum',     name:'Momentum',      desc:'+15% move speed',        apply: p => { p.speed = Math.min(320, p.speed * 1.15); } },
+];
+
+// ---- SOUL DEFINITIONS ----
+const SOUL_TYPES = {
+  bone_shield: { name:'Bone Shield', desc:'10% less damage',   color:0xccccaa },
+  shadow_step: { name:'Shadow Step', desc:'Dodge -30% cd',     color:0x8844cc },
+  fury:        { name:'Fury',        desc:'+15% attack dmg',   color:0xff4422 },
+};
+
+// ---- ENEMY DEFINITIONS ----
+const ENEMY_TYPES = [
+  { type:'skeleton', name:'Skeleton',  color:0xccccaa, hp:40, speed:70,  dmg:12, soul:'bone_shield', ranged:false, charge:false },
+  { type:'wisp',     name:'Shadow Wisp',color:0x8844cc, hp:25, speed:140, dmg:8,  soul:'shadow_step', ranged:true,  charge:false },
+  { type:'demon',    name:'Rage Demon', color:0xff4422, hp:60, speed:50,  dmg:18, soul:'fury',        ranged:false, charge:true  },
+];
+
+// ============================================================
+// GAME SCENE
+// ============================================================
+class GameScene extends Phaser.Scene {
+  constructor() { super('Game'); }
+
+  create() {
+    this.roomNumber = 0;
+    this.souls = [];      // active companions
+    this.boons = [];      // boons taken
+
+    this.setupPlayer();
+    this.setupRoom();
+    this.setupUI();
+    this.setupInput();
+  }
+
+  setupPlayer() {
+    const cx = W / 2, cy = H / 2;
+    this.player = {
+      x: cx, y: cy,
+      hp: 100, maxHp: 100,
+      speed: 220,
+      attackCooldown: 0.5,
+      attackTimer: 0,
+      dodgeCooldown: 1.2,
+      dodgeTimer: 0,
+      dodging: false,
+      dodgeDuration: 0,
+      facing: { x: 1, y: 0 },
+      lifesteal: 0,
+      berserker: false,
+      soulLink: false,
+      damageReduction: 0,
+      dead: false,
+    };
+
+    // Player visuals
+    this.playerGfx = this.add.graphics();
+    this.drawPlayer();
+
+    // Attack arc flash
+    this.attackGfx = this.add.graphics();
+    this.attackGfx.setAlpha(0);
+
+    this.enemies = [];
+    this.projectiles = [];
+    this.soulOrbs = [];
+  }
+
+  setupRoom() {
+    this.roomNumber++;
+    this.roomCleared = false;
+    this.boonPending = false;
+
+    // Clear old
+    this.enemies.forEach(e => { e.gfx && e.gfx.destroy(); e.hpBar && e.hpBar.destroy(); });
+    this.enemies = [];
+    this.projectiles.forEach(p => p.gfx && p.gfx.destroy());
+    this.projectiles = [];
+    this.soulOrbs.forEach(o => o.gfx && o.gfx.destroy());
+    this.soulOrbs = [];
+
+    // Draw walls/floor
+    if (this.roomGfx) this.roomGfx.destroy();
+    this.roomGfx = this.add.graphics();
+    this.roomGfx.setDepth(-10);
+    // Floor
+    this.roomGfx.fillStyle(0x1a1a2e);
+    this.roomGfx.fillRect(WALL, WALL, W - WALL*2, H - WALL*2);
+    // Walls
+    this.roomGfx.fillStyle(0x2d2d4a);
+    this.roomGfx.fillRect(0, 0, W, WALL);
+    this.roomGfx.fillRect(0, H-WALL, W, WALL);
+    this.roomGfx.fillRect(0, 0, WALL, H);
+    this.roomGfx.fillRect(W-WALL, 0, WALL, H);
+    // Wall detail lines
+    this.roomGfx.lineStyle(2, 0x44447a, 0.5);
+    for (let x = WALL; x < W-WALL; x += 60) {
+      this.roomGfx.beginPath();
+      this.roomGfx.moveTo(x, WALL);
+      this.roomGfx.lineTo(x, H-WALL);
+      this.roomGfx.strokePath();
+    }
+    for (let y = WALL; y < H-WALL; y += 60) {
+      this.roomGfx.beginPath();
+      this.roomGfx.moveTo(WALL, y);
+      this.roomGfx.lineTo(W-WALL, y);
+      this.roomGfx.strokePath();
+    }
+
+    // Door indicator (inactive until cleared)
+    if (this.doorGfx) this.doorGfx.destroy();
+    this.doorGfx = this.add.graphics();
+    this.doorGfx.setDepth(1);
+    this.drawDoor(false);
+
+    // Spawn enemies
+    const isBoss = this.roomNumber % 5 === 0;
+    const count = isBoss ? 1 : Phaser.Math.Between(3, 5 + Math.floor(this.roomNumber/2));
+    for (let i = 0; i < count; i++) {
+      const typeDef = isBoss
+        ? { ...ENEMY_TYPES[2], hp: 200, name:'BOSS DEMON', color:0xff0000, dmg:25, speed:120 }
+        : ENEMY_TYPES[Phaser.Math.Between(0, ENEMY_TYPES.length-1)];
+      this.spawnEnemy(typeDef);
+    }
+
+    // Reset player position
+    this.player.x = W/2;
+    this.player.y = H/2 + 50;
+
+    this.updateRoomText();
+  }
+
+  drawDoor(open) {
+    this.doorGfx.clear();
+    const dx = W/2, dy = WALL;
+    if (open) {
+      this.doorGfx.fillStyle(0x00ff88);
+      this.doorGfx.fillRect(dx-25, 2, 50, WALL-2);
+      this.doorGfx.fillStyle(0x00ffaa);
+      this.doorGfx.fillTriangle(dx, dy-10, dx-15, dy+15, dx+15, dy+15);
+    } else {
+      this.doorGfx.fillStyle(0x443333);
+      this.doorGfx.fillRect(dx-25, 2, 50, WALL-2);
+    }
+  }
+
+  spawnEnemy(typeDef) {
+    // Random position away from player and walls
+    let ex, ey, attempts = 0;
+    do {
+      ex = Phaser.Math.Between(WALL+40, W-WALL-40);
+      ey = Phaser.Math.Between(WALL+40, H-WALL-40);
+      attempts++;
+    } while (Phaser.Math.Distance.Between(ex, ey, this.player.x, this.player.y) < 150 && attempts < 20);
+
+    const e = {
+      ...typeDef,
+      x: ex, y: ey,
+      maxHp: typeDef.hp,
+      aiTimer: Math.random() * 1.0,
+      projTimer: 0,
+      chargeVx: 0, chargeVy: 0,
+      charging: false, chargeTimer: 0,
+      dead: false,
+      gfx: this.add.graphics(),
+      hpBar: this.add.graphics(),
+    };
+    e.gfx.setDepth(2);
+    e.hpBar.setDepth(3);
+    this.drawEnemy(e);
+    this.enemies.push(e);
+  }
+
+  setupInput() {
+    this.keys = this.input.keyboard.addKeys({
+      up: Phaser.Input.Keyboard.KeyCodes.W,
+      down: Phaser.Input.Keyboard.KeyCodes.S,
+      left: Phaser.Input.Keyboard.KeyCodes.A,
+      right: Phaser.Input.Keyboard.KeyCodes.D,
+      attack: Phaser.Input.Keyboard.KeyCodes.SPACE,
+      dodge: Phaser.Input.Keyboard.KeyCodes.SHIFT,
+    });
+  }
+
+  setupUI() {
+    // HP bar background
+    this.hpBarBg = this.add.graphics().setDepth(10);
+    this.hpBarFg = this.add.graphics().setDepth(10);
+    this.hpText = this.add.text(16, 16, '', { fontSize:'14px', fill:'#ffffff', fontFamily:'monospace' }).setDepth(11);
+    this.roomText = this.add.text(W-16, 16, '', { fontSize:'16px', fill:'#aaaaff', fontFamily:'monospace', align:'right' }).setDepth(11).setOrigin(1,0);
+
+    // Companion slots
+    this.soulSlots = [];
+    for (let i = 0; i < 4; i++) {
+      const sx = 16 + i * 210;
+      const slot = {
+        bg: this.add.graphics().setDepth(10),
+        nameText: this.add.text(sx+36, H-48, '', { fontSize:'11px', fill:'#ffffff', fontFamily:'monospace' }).setDepth(11),
+        descText: this.add.text(sx+36, H-32, '', { fontSize:'10px', fill:'#aaaaaa', fontFamily:'monospace' }).setDepth(11),
+        icon: this.add.graphics().setDepth(11),
+      };
+      this.soulSlots.push(slot);
+    }
+    this.updateUI();
+  }
+
+  updateUI() {
+    const p = this.player;
+    // HP bar
+    this.hpBarBg.clear();
+    this.hpBarBg.fillStyle(0x330000);
+    this.hpBarBg.fillRect(14, 36, 152, 14);
+    this.hpBarFg.clear();
+    const pct = Math.max(0, p.hp / p.maxHp);
+    const col = pct > 0.6 ? 0x44ff44 : pct > 0.3 ? 0xffaa00 : 0xff2222;
+    this.hpBarFg.fillStyle(col);
+    this.hpBarFg.fillRect(15, 37, Math.floor(150*pct), 12);
+    this.hpText.setText(`HP: ${Math.max(0,p.hp)} / ${p.maxHp}`);
+
+    // Companion slots
+    for (let i = 0; i < 4; i++) {
+      const slot = this.soulSlots[i];
+      const sx = 16 + i * 215;
+      slot.bg.clear();
+      slot.bg.lineStyle(1, 0x444466);
+      slot.bg.fillStyle(this.souls[i] ? 0x1a1a3a : 0x0d0d1a);
+      slot.bg.fillRect(sx, H-60, 205, 52);
+      slot.bg.strokeRect(sx, H-60, 205, 52);
+
+      if (this.souls[i]) {
+        const soul = this.souls[i];
+        slot.icon.clear();
+        slot.icon.fillStyle(soul.color);
+        slot.icon.fillCircle(sx+18, H-34, 12);
+        slot.nameText.setPosition(sx+36, H-50).setText(soul.name).setFill('#ffffff');
+        slot.descText.setPosition(sx+36, H-34).setText(soul.desc).setFill('#aaaacc');
+      } else {
+        slot.icon.clear();
+        slot.icon.fillStyle(0x222244);
+        slot.icon.fillCircle(sx+18, H-34, 12);
+        slot.nameText.setPosition(sx+36, H-50).setText('[ empty ]').setFill('#444466');
+        slot.descText.setPosition(sx+36, H-34).setText('').setFill('#444466');
+      }
+    }
+  }
+
+  updateRoomText() {
+    this.roomText.setText(`Room ${this.roomNumber}`);
+  }
+
+  drawPlayer() {
+    const p = this.player;
+    this.playerGfx.clear();
+    this.playerGfx.setPosition(p.x, p.y);
+    if (p.dodging) {
+      this.playerGfx.fillStyle(0x8888ff, 0.5);
+    } else {
+      this.playerGfx.fillStyle(0x4488ff);
+    }
+    this.playerGfx.fillCircle(0, 0, 14);
+    // Eye (facing direction)
+    this.playerGfx.fillStyle(0xffffff);
+    this.playerGfx.fillCircle(p.facing.x * 7, p.facing.y * 7, 4);
+    this.playerGfx.fillStyle(0x0000aa);
+    this.playerGfx.fillCircle(p.facing.x * 8, p.facing.y * 8, 2);
+    this.playerGfx.setDepth(5);
+  }
+
+  drawEnemy(e) {
+    e.gfx.clear();
+    e.gfx.setPosition(e.x, e.y);
+    e.gfx.fillStyle(e.color, e.dead ? 0 : 1);
+    if (e.type === 'wisp') {
+      e.gfx.fillCircle(0, 0, 10);
+      e.gfx.lineStyle(1, 0xffffff, 0.3);
+      e.gfx.strokeCircle(0, 0, 14);
+    } else if (e.type === 'skeleton') {
+      e.gfx.fillRect(-10, -12, 20, 24);
+    } else {
+      e.gfx.fillTriangle(0, -14, -12, 12, 12, 12);
+    }
+
+    // HP bar
+    e.hpBar.clear();
+    if (!e.dead) {
+      e.hpBar.fillStyle(0x330000);
+      e.hpBar.fillRect(e.x-16, e.y-22, 32, 4);
+      const pct = e.hp / e.maxHp;
+      e.hpBar.fillStyle(0xff4444);
+      e.hpBar.fillRect(e.x-16, e.y-22, Math.floor(32*pct), 4);
+    }
+  }
+
+  getPlayerDamage() {
+    let dmg = 20;
+    // Fury soul
+    if (this.souls.find(s => s && s.id === 'fury')) dmg *= 1.15;
+    // Berserker boon
+    if (this.player.berserker && this.player.hp < this.player.maxHp * 0.5) dmg *= 1.25;
+    // Soul Link boon
+    if (this.player.soulLink) dmg *= 1 + this.souls.filter(s=>s).length * 0.05;
+    return Math.floor(dmg);
+  }
+
+  update(time, delta) {
+    if (this.player.dead) return;
+    if (this.boonPending) return;
+
+    const dt = delta / 1000;
+    this.handleMovement(dt);
+    this.handleAttack(dt);
+    this.handleEnemyAI(dt);
+    this.handleProjectiles(dt);
+    this.handleSoulOrbs();
+    this.checkRoomClear();
+    this.drawPlayer();
+    this.updateUI();
+  }
+
+  handleMovement(dt) {
+    const p = this.player;
+    let vx = 0, vy = 0;
+
+    if (p.dodging) {
+      p.dodgeDuration -= dt;
+      if (p.dodgeDuration <= 0) {
+        p.dodging = false;
+      }
+      // Continue dodge momentum (stored in dodgeVx/Vy)
+      p.x = Phaser.Math.Clamp(p.x + p.dodgeVx * dt, WALL+16, W-WALL-16);
+      p.y = Phaser.Math.Clamp(p.y + p.dodgeVy * dt, WALL+16, H-WALL-76);
+      return;
+    }
+
+    if (this.keys.left.isDown)  vx -= 1;
+    if (this.keys.right.isDown) vx += 1;
+    if (this.keys.up.isDown)    vy -= 1;
+    if (this.keys.down.isDown)  vy += 1;
+
+    if (vx !== 0 || vy !== 0) {
+      const len = Math.sqrt(vx*vx + vy*vy);
+      vx /= len; vy /= len;
+      p.facing = { x: vx, y: vy };
+    }
+
+    p.x = Phaser.Math.Clamp(p.x + vx * p.speed * dt, WALL+16, W-WALL-16);
+    p.y = Phaser.Math.Clamp(p.y + vy * p.speed * dt, WALL+16, H-WALL-76);
+
+    // Dodge roll
+    p.dodgeTimer = Math.max(0, p.dodgeTimer - dt);
+    if (Phaser.Input.Keyboard.JustDown(this.keys.dodge) && p.dodgeTimer <= 0) {
+      let ddx = vx || p.facing.x, ddy = vy || p.facing.y;
+      const len = Math.sqrt(ddx*ddx + ddy*ddy) || 1;
+      p.dodgeVx = (ddx/len) * 500;
+      p.dodgeVy = (ddy/len) * 500;
+      p.dodging = true;
+      p.dodgeDuration = 0.22;
+      let cd = 1.2;
+      if (this.souls.find(s => s && s.id === 'shadow_step')) cd *= 0.7;
+      p.dodgeTimer = cd;
+    }
+  }
+
+  handleAttack(dt) {
+    const p = this.player;
+    p.attackTimer = Math.max(0, p.attackTimer - dt);
+
+    if (Phaser.Input.Keyboard.JustDown(this.keys.attack) && p.attackTimer <= 0) {
+      p.attackTimer = p.attackCooldown;
+      const dmg = this.getPlayerDamage();
+      const range = 65;
+
+      // Flash arc
+      this.attackGfx.clear();
+      this.attackGfx.setAlpha(0.7);
+      this.attackGfx.fillStyle(0xffffff);
+      this.attackGfx.fillCircle(p.x + p.facing.x*35, p.y + p.facing.y*35, 28);
+      this.tweens.add({ targets: this.attackGfx, alpha: 0, duration: 200 });
+
+      // Damage enemies in arc
+      let killed = 0;
+      this.enemies.forEach(e => {
+        if (e.dead) return;
+        const dx = e.x - p.x, dy = e.y - p.y;
+        const dist = Math.sqrt(dx*dx+dy*dy);
+        if (dist > range) return;
+        const dot = (dx/dist)*p.facing.x + (dy/dist)*p.facing.y;
+        if (dot > 0.2) {
+          // Bone shield soul on enemy reduces nothing (that's player defence)
+          let d = dmg;
+          if (e.type === 'demon' && e.charging) d *= 0.6; // charging demons have dmg resist
+          e.hp -= d;
+          this.showDamageNumber(e.x, e.y, d, 0xffffff);
+          if (e.hp <= 0) {
+            e.dead = true;
+            killed++;
+            if (p.lifesteal > 0) {
+              p.hp = Math.min(p.maxHp, p.hp + p.lifesteal);
+            }
+            this.killEnemy(e);
+          } else {
+            // Knockback flash
+            this.tweens.add({ targets: e.gfx, alpha: 0.3, yoyo: true, duration: 80 });
+          }
+        }
+      });
+    }
+  }
+
+  killEnemy(e) {
+    e.gfx.destroy();
+    e.hpBar.destroy();
+
+    // Soul orb chance
+    if (Math.random() < 0.40) {
+      const soulDef = SOUL_TYPES[e.soul];
+      const orb = {
+        x: e.x, y: e.y,
+        id: e.soul,
+        name: soulDef.name,
+        desc: soulDef.desc,
+        color: soulDef.color,
+        gfx: this.add.graphics(),
+        t: 0,
+      };
+      orb.gfx.setDepth(4);
+      this.soulOrbs.push(orb);
+    }
+  }
+
+  handleEnemyAI(dt) {
+    const p = this.player;
+    this.enemies.forEach(e => {
+      if (e.dead) return;
+      e.aiTimer -= dt;
+
+      const dx = p.x - e.x, dy = p.y - e.y;
+      const dist = Math.sqrt(dx*dx+dy*dy);
+
+      if (e.ranged) {
+        // Wisp: keep distance, shoot projectiles
+        e.projTimer -= dt;
+        if (dist > 200) {
+          e.x += (dx/dist) * e.speed * dt;
+          e.y += (dy/dist) * e.speed * dt;
+        } else if (dist < 120) {
+          e.x -= (dx/dist) * e.speed * dt;
+          e.y -= (dy/dist) * e.speed * dt;
+        }
+        if (e.projTimer <= 0) {
+          e.projTimer = 1.8;
+          this.spawnProjectile(e.x, e.y, dx/dist, dy/dist, e.dmg);
+        }
+      } else if (e.charge) {
+        // Demon: charges then pauses
+        if (!e.charging) {
+          e.x += (dx/dist) * e.speed * dt;
+          e.y += (dy/dist) * e.speed * dt;
+          if (e.aiTimer <= 0 && dist < 180) {
+            e.aiTimer = 2.5;
+            e.charging = true;
+            e.chargeTimer = 0.5;
+            e.chargeVx = (dx/dist) * 340;
+            e.chargeVy = (dy/dist) * 340;
+          }
+        } else {
+          e.chargeTimer -= dt;
+          e.x += e.chargeVx * dt;
+          e.y += e.chargeVy * dt;
+          if (e.chargeTimer <= 0) e.charging = false;
+          // Damage player on charge contact
+          const cd = Math.sqrt((e.x-p.x)**2 + (e.y-p.y)**2);
+          if (cd < 22 && !p.dodging) this.damagePlayer(e.dmg);
+        }
+      } else {
+        // Skeleton: walk toward player, melee
+        e.x += (dx/dist) * e.speed * dt;
+        e.y += (dy/dist) * e.speed * dt;
+        if (dist < 26 && e.aiTimer <= 0) {
+          e.aiTimer = 1.2;
+          if (!p.dodging) this.damagePlayer(e.dmg);
+        }
+      }
+
+      // Clamp enemies to room
+      e.x = Phaser.Math.Clamp(e.x, WALL+14, W-WALL-14);
+      e.y = Phaser.Math.Clamp(e.y, WALL+14, H-WALL-74);
+      this.drawEnemy(e);
+    });
+  }
+
+  spawnProjectile(x, y, vx, vy, dmg) {
+    const spd = 200;
+    const proj = {
+      x, y,
+      vx: vx * spd, vy: vy * spd,
+      dmg, life: 2.5,
+      gfx: this.add.graphics().setDepth(3),
+    };
+    proj.gfx.fillStyle(0xcc44ff);
+    proj.gfx.fillCircle(0, 0, 6);
+    this.projectiles.push(proj);
+  }
+
+  handleProjectiles(dt) {
+    const p = this.player;
+    this.projectiles = this.projectiles.filter(proj => {
+      if (proj.dead) { proj.gfx.destroy(); return false; }
+      proj.x += proj.vx * dt;
+      proj.y += proj.vy * dt;
+      proj.life -= dt;
+      proj.gfx.setPosition(proj.x, proj.y);
+
+      // Hit wall
+      if (proj.x < WALL || proj.x > W-WALL || proj.y < WALL || proj.y > H-WALL) {
+        proj.gfx.destroy();
+        return false;
+      }
+      // Hit player
+      if (!p.dodging && Phaser.Math.Distance.Between(proj.x, proj.y, p.x, p.y) < 18) {
+        this.damagePlayer(proj.dmg);
+        proj.gfx.destroy();
+        return false;
+      }
+      if (proj.life <= 0) { proj.gfx.destroy(); return false; }
+      return true;
+    });
+  }
+
+  handleSoulOrbs() {
+    const p = this.player;
+    this.soulOrbs = this.soulOrbs.filter(orb => {
+      if (!orb.gfx) return false;
+      orb.t += 0.05;
+      orb.gfx.clear();
+      orb.gfx.setPosition(orb.x, orb.y);
+      orb.gfx.fillStyle(orb.color, 0.85 + Math.sin(orb.t*3)*0.15);
+      orb.gfx.fillCircle(0, 0, 10);
+      orb.gfx.lineStyle(2, 0xffffff, 0.4);
+      orb.gfx.strokeCircle(0, 0, 14 + Math.sin(orb.t*2)*3);
+
+      const dist = Phaser.Math.Distance.Between(orb.x, orb.y, p.x, p.y);
+      if (dist < 22) {
+        // Absorb
+        orb.gfx.destroy();
+        this.absorbSoul(orb);
+        return false;
+      }
+      return true;
+    });
+  }
+
+  absorbSoul(orb) {
+    const soul = { id: orb.id, name: orb.name, desc: orb.desc, color: orb.color };
+    const empty = this.souls.findIndex(s => !s);
+    if (empty !== -1) {
+      this.souls[empty] = soul;
+      this.showFloatText(this.player.x, this.player.y - 20, `Soul: ${soul.name}!`, orb.color);
+    } else {
+      // Party full — for simplicity, auto-replace slot 0 (TODO: UI prompt)
+      this.showFloatText(this.player.x, this.player.y - 20, `Soul replaced!`, orb.color);
+      this.souls[0] = soul;
+    }
+    this.updateUI();
+  }
+
+  damagePlayer(amount) {
+    const p = this.player;
+    let dmg = amount;
+    // Bone shield soul
+    if (this.souls.find(s => s && s.id === 'bone_shield')) dmg = Math.floor(dmg * 0.9);
+    // Toughness boon
+    dmg = Math.floor(dmg * (1 - (p.damageReduction || 0)));
+    p.hp -= dmg;
+    this.showDamageNumber(p.x, p.y - 20, dmg, 0xff4444);
+
+    // Flash player red
+    this.tweens.add({ targets: this.playerGfx, alpha: 0.3, yoyo: true, duration: 80, repeat: 1 });
+
+    if (p.hp <= 0) {
+      p.hp = 0;
+      p.dead = true;
+      this.time.delayedCall(400, () => this.scene.start('GameOver', {
+        room: this.roomNumber,
+      }));
+    }
+  }
+
+  checkRoomClear() {
+    if (this.roomCleared || this.boonPending) return;
+    const alive = this.enemies.filter(e => !e.dead);
+    if (alive.length === 0 && this.enemies.length > 0) {
+      this.roomCleared = true;
+      this.drawDoor(true);
+      this.showFloatText(W/2, H/2-60, 'Room Cleared!', 0x00ff88);
+
+      // Check if player walks through door
+      this.time.addEvent({
+        delay: 100, loop: true, callback: () => {
+          if (this.player.y < WALL + 20 && Math.abs(this.player.x - W/2) < 40) {
+            this.showBoonSelection();
+          }
+        }
+      });
+    }
+  }
+
+  showBoonSelection() {
+    if (this.boonPending) return;
+    this.boonPending = true;
+
+    // Pick 3 random boons
+    const shuffled = Phaser.Utils.Array.Shuffle([...BOONS]);
+    const picks = shuffled.slice(0, 3);
+
+    // Dim overlay
+    const overlay = this.add.graphics().setDepth(20);
+    overlay.fillStyle(0x000000, 0.75);
+    overlay.fillRect(0, 0, W, H);
+
+    const title = this.add.text(W/2, 100, 'CHOOSE A BOON', {
+      fontSize: '28px', fill: '#ffffff', fontFamily: 'monospace', fontStyle: 'bold'
+    }).setOrigin(0.5).setDepth(21);
+
+    const cards = [];
+    picks.forEach((boon, i) => {
+      const cx = W/2 + (i-1) * 240;
+      const cy = H/2;
+      const bg = this.add.graphics().setDepth(21);
+      bg.fillStyle(0x1a1a3a);
+      bg.fillRoundedRect(cx-100, cy-70, 200, 140, 10);
+      bg.lineStyle(2, 0x4444aa);
+      bg.strokeRoundedRect(cx-100, cy-70, 200, 140, 10);
+
+      const nm = this.add.text(cx, cy-40, boon.name, {
+        fontSize:'16px', fill:'#aaaaff', fontFamily:'monospace', fontStyle:'bold'
+      }).setOrigin(0.5).setDepth(22);
+      const ds = this.add.text(cx, cy, boon.desc, {
+        fontSize:'13px', fill:'#cccccc', fontFamily:'monospace', wordWrap:{width:180}, align:'center'
+      }).setOrigin(0.5).setDepth(22);
+      const hint = this.add.text(cx, cy+50, `Press ${i+1}`, {
+        fontSize:'13px', fill:'#666699', fontFamily:'monospace'
+      }).setOrigin(0.5).setDepth(22);
+
+      cards.push({ bg, nm, ds, hint });
+
+      // Hover effect
+      bg.setInteractive(new Phaser.Geom.Rectangle(cx-100, cy-70, 200, 140), Phaser.Geom.Rectangle.Contains);
+      bg.on('pointerover', () => { bg.clear(); bg.fillStyle(0x2a2a5a); bg.fillRoundedRect(cx-100,cy-70,200,140,10); bg.lineStyle(2,0x8888ff); bg.strokeRoundedRect(cx-100,cy-70,200,140,10); });
+      bg.on('pointerout',  () => { bg.clear(); bg.fillStyle(0x1a1a3a); bg.fillRoundedRect(cx-100,cy-70,200,140,10); bg.lineStyle(2,0x4444aa); bg.strokeRoundedRect(cx-100,cy-70,200,140,10); });
+      bg.on('pointerdown', () => selectBoon(i));
+    });
+
+    // Keyboard selection
+    const keyHandler = (event) => {
+      if (event.key === '1') selectBoon(0);
+      if (event.key === '2') selectBoon(1);
+      if (event.key === '3') selectBoon(2);
+    };
+    window.addEventListener('keydown', keyHandler);
+
+    const selectBoon = (idx) => {
+      window.removeEventListener('keydown', keyHandler);
+      picks[idx].apply(this.player);
+      this.boons.push(picks[idx]);
+      this.showFloatText(W/2, H/2-100, `+${picks[idx].name}`, 0xffff00);
+      overlay.destroy(); title.destroy();
+      cards.forEach(c => { c.bg.destroy(); c.nm.destroy(); c.ds.destroy(); c.hint.destroy(); });
+      this.boonPending = false;
+      this.setupRoom();
+    };
+  }
+
+  showDamageNumber(x, y, amount, color) {
+    const t = this.add.text(x, y, `-${amount}`, {
+      fontSize:'14px', fill: '#'+color.toString(16).padStart(6,'0'), fontFamily:'monospace', fontStyle:'bold'
+    }).setOrigin(0.5).setDepth(15);
+    this.tweens.add({ targets: t, y: y-35, alpha: 0, duration: 700, onComplete: () => t.destroy() });
+  }
+
+  showFloatText(x, y, msg, color) {
+    const col = '#'+color.toString(16).padStart(6,'0');
+    const t = this.add.text(x, y, msg, {
+      fontSize:'18px', fill: col, fontFamily:'monospace', fontStyle:'bold'
+    }).setOrigin(0.5).setDepth(15);
+    this.tweens.add({ targets: t, y: y-50, alpha: 0, duration: 1200, onComplete: () => t.destroy() });
+  }
+}
+
+// ============================================================
+// MENU SCENE
+// ============================================================
+class MenuScene extends Phaser.Scene {
+  constructor() { super('Menu'); }
+  create() {
+    const bg = this.add.graphics();
+    bg.fillStyle(0x0a0a0a);
+    bg.fillRect(0,0,W,H);
+    // Title glow
+    for (let i = 5; i > 0; i--) {
+      this.add.text(W/2, 180, 'SOULBOUND', {
+        fontSize:'56px', fill:'#'+Math.floor(0x4444aa*i/5).toString(16).padStart(6,'0'),
+        fontFamily:'monospace', fontStyle:'bold'
+      }).setOrigin(0.5).setAlpha(0.3/i);
+    }
+    this.add.text(W/2, 180, 'SOULBOUND', {
+      fontSize:'56px', fill:'#aaaaff', fontFamily:'monospace', fontStyle:'bold'
+    }).setOrigin(0.5);
+
+    this.add.text(W/2, 255, 'A roguelike about absorbing souls', {
+      fontSize:'16px', fill:'#666699', fontFamily:'monospace'
+    }).setOrigin(0.5);
+
+    this.add.text(W/2, 340, 'WASD — Move      SPACE — Attack      SHIFT — Dodge', {
+      fontSize:'14px', fill:'#888899', fontFamily:'monospace'
+    }).setOrigin(0.5);
+    this.add.text(W/2, 365, 'Absorb soul orbs to gain companions', {
+      fontSize:'14px', fill:'#888899', fontFamily:'monospace'
+    }).setOrigin(0.5);
+    this.add.text(W/2, 390, 'Walk through the top door to advance', {
+      fontSize:'14px', fill:'#888899', fontFamily:'monospace'
+    }).setOrigin(0.5);
+
+    const best = localStorage.getItem('soulbound_best') || 0;
+    const runs = localStorage.getItem('soulbound_runs') || 0;
+    if (runs > 0) {
+      this.add.text(W/2, 445, `Runs: ${runs}   Best Room: ${best}`, {
+        fontSize:'14px', fill:'#555577', fontFamily:'monospace'
+      }).setOrigin(0.5);
+    }
+
+    const btn = this.add.text(W/2, 510, '[ PRESS ENTER TO PLAY ]', {
+      fontSize:'20px', fill:'#4488ff', fontFamily:'monospace', fontStyle:'bold'
+    }).setOrigin(0.5);
+    this.tweens.add({ targets: btn, alpha: 0.4, yoyo: true, duration: 700, repeat: -1 });
+
+    this.input.keyboard.once('keydown-ENTER', () => this.scene.start('Game'));
+    this.input.keyboard.once('keydown-SPACE', () => this.scene.start('Game'));
+  }
+}
+
+// ============================================================
+// GAME OVER SCENE
+// ============================================================
+class GameOverScene extends Phaser.Scene {
+  constructor() { super('GameOver'); }
+  init(data) { this.data2 = data; }
+  create() {
+    const d = this.data2;
+    // Save stats
+    const runs = parseInt(localStorage.getItem('soulbound_runs') || '0') + 1;
+    const best = Math.max(parseInt(localStorage.getItem('soulbound_best') || '0'), d.room);
+    localStorage.setItem('soulbound_runs', runs);
+    localStorage.setItem('soulbound_best', best);
+
+    const bg = this.add.graphics();
+    bg.fillStyle(0x0a0a0a);
+    bg.fillRect(0,0,W,H);
+
+    this.add.text(W/2, 160, 'YOU DIED', {
+      fontSize:'52px', fill:'#ff3333', fontFamily:'monospace', fontStyle:'bold'
+    }).setOrigin(0.5);
+
+    this.add.text(W/2, 250, `Reached Room ${d.room}`, {
+      fontSize:'24px', fill:'#cccccc', fontFamily:'monospace'
+    }).setOrigin(0.5);
+
+    this.add.text(W/2, 310, `Best: Room ${best}   Total Runs: ${runs}`, {
+      fontSize:'16px', fill:'#888899', fontFamily:'monospace'
+    }).setOrigin(0.5);
+
+    const btn = this.add.text(W/2, 420, '[ PRESS ENTER TO TRY AGAIN ]', {
+      fontSize:'20px', fill:'#4488ff', fontFamily:'monospace', fontStyle:'bold'
+    }).setOrigin(0.5);
+    this.tweens.add({ targets: btn, alpha: 0.4, yoyo: true, duration: 700, repeat: -1 });
+
+    this.add.text(W/2, 500, 'Press M for Menu', {
+      fontSize:'14px', fill:'#444466', fontFamily:'monospace'
+    }).setOrigin(0.5);
+
+    this.input.keyboard.once('keydown-ENTER', () => this.scene.start('Game'));
+    this.input.keyboard.once('keydown-M', () => this.scene.start('Menu'));
+  }
+}
+
+// ============================================================
+// BOOT
+// ============================================================
+const config = {
+  type: Phaser.AUTO,
+  width: W, height: H,
+  backgroundColor: '#0a0a0a',
+  parent: document.body,
+  scene: [MenuScene, GameScene, GameOverScene],
+};
+new Phaser.Game(config);
+</script>
+</body>
+</html>
