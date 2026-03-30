@@ -4,9 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SOULBOUND</title>
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.70.0/dist/phaser.min.js"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { background: #0a0a0a; display: flex; justify-content: center; align-items: center; min-height: 100vh; overflow: hidden; font-family: monospace; }
+  body { background: #0a0a0a; margin: 0; overflow: hidden; font-family: monospace; }
   canvas { display: block; }
   #menu {
     position: fixed; inset: 0;
@@ -17,8 +18,8 @@
   }
   #menu h1 { font-size: 56px; color: #aaaaff; letter-spacing: 6px; text-shadow: 0 0 30px #4444aa; margin-bottom: 12px; }
   #menu p { color: #555577; font-size: 15px; margin-bottom: 8px; }
-  #menu .controls { color: #666688; font-size: 13px; margin: 20px 0 6px; }
-  #menu .best { color: #444466; font-size: 13px; margin-bottom: 32px; }
+  #menu .controls { color: #666688; font-size: 13px; margin: 8px 0; }
+  #menu .best { color: #444466; font-size: 13px; margin-bottom: 32px; margin-top: 16px; }
   #play-btn {
     background: #2244aa; color: #fff; border: none; border-radius: 8px;
     font-size: 22px; font-family: monospace; font-weight: bold;
@@ -30,7 +31,6 @@
 </style>
 </head>
 <body>
-<div id="game-container" style="display:none;"></div>
 <div id="menu">
   <h1>SOULBOUND</h1>
   <p>A roguelike about absorbing souls</p>
@@ -52,14 +52,9 @@
 // Click play → load Phaser and start game
 document.getElementById('play-btn').addEventListener('click', function() {
   document.getElementById('menu').style.display = 'none';
-  document.getElementById('game-container').style.display = 'block';
-  const s = document.createElement('script');
-  s.src = 'https://cdn.jsdelivr.net/npm/phaser@3.70.0/dist/phaser.min.js';
-  s.onload = initGame;
-  document.head.appendChild(s);
 });
 
-function initGame() {
+window.addEventListener('load', function() {
 // ============================================================
 // SOULBOUND - A top-down roguelike
 // WASD = move, SPACE = attack, SHIFT = dodge roll
@@ -824,11 +819,10 @@ class GameOverScene extends Phaser.Scene {
     type: Phaser.AUTO,
     width: W, height: H,
     backgroundColor: '#0a0a0a',
-    parent: 'game-container',
     scene: [GameScene, GameOverScene],
   };
   new Phaser.Game(config);
-} // end initGame
+}); // end window.load
 </script>
 </body>
 </html>
