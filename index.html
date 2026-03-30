@@ -4,532 +4,737 @@
 <meta charset="UTF-8">
 <title>SOULBOUND</title>
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/phaser@3.70.0/dist/phaser.min.js"></script>
 <style>
-* { margin:0; padding:0; box-sizing:border-box; }
-body { background:#000; overflow:hidden; display:flex; align-items:center; justify-content:center; height:100vh; }
-canvas { image-rendering:pixelated; image-rendering:crisp-edges; display:block; }
-#menu {
-  position:fixed; inset:0; background:#000;
-  display:flex; flex-direction:column; align-items:center; justify-content:center;
-  z-index:999; gap:12px;
-}
-#menu h1 {
-  font-family:'Press Start 2P',monospace; font-size:28px; color:#cc88ff;
-  text-shadow:3px 3px 0 #440066, 0 0 40px #8844aa; letter-spacing:4px; margin-bottom:8px;
-}
-.mline { font-family:'Press Start 2P',monospace; font-size:8px; color:#555588; }
-.mctrl { font-family:'Press Start 2P',monospace; font-size:7px; color:#333366; margin-top:2px; }
-#stats  { font-family:'Press Start 2P',monospace; font-size:7px; color:#333355; margin-top:8px; }
-#play-btn {
-  font-family:'Press Start 2P',monospace; margin-top:14px;
-  background:#1a0033; color:#cc88ff; border:2px solid #8844aa;
-  padding:12px 32px; font-size:13px; cursor:pointer; letter-spacing:2px;
-  box-shadow:3px 3px 0 #330066;
-}
-#play-btn:hover { background:#330055; color:#fff; }
-#play-btn:active { transform:translate(2px,2px); box-shadow:1px 1px 0 #330066; }
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#000;overflow:hidden;font-family:'Press Start 2P',monospace;}
+#c{display:block;width:100vw;height:100vh;}
+
+/* HUD */
+#hud{position:fixed;inset:0;pointer-events:none;z-index:10;}
+#hp-wrap{position:absolute;top:14px;left:14px;}
+#hp-label{font-size:8px;color:#fff;margin-bottom:4px;}
+#hp-bg{width:140px;height:10px;background:#330000;border:1px solid #550000;}
+#hp-fg{height:100%;background:#44cc44;transition:width .1s;}
+#room-lbl{position:absolute;top:14px;right:14px;font-size:8px;color:#aaaaff;}
+#souls-bar{position:absolute;bottom:0;left:0;right:0;height:52px;background:rgba(0,0,0,.85);border-top:1px solid #223355;display:flex;align-items:center;padding:0 8px;gap:6px;}
+.soul-slot{width:23%;height:40px;border:1px solid #223;background:#050510;display:flex;align-items:center;padding:4px 6px;gap:6px;}
+.soul-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+.soul-info{display:flex;flex-direction:column;gap:3px;}
+.soul-name{font-size:5px;color:#fff;}
+.soul-desc{font-size:4px;color:#aac;}
+
+/* Damage numbers */
+.dmg{position:fixed;font-size:8px;pointer-events:none;z-index:20;text-shadow:1px 1px 0 #000;transform:translateX(-50%);animation:floatUp .7s forwards;}
+@keyframes floatUp{to{transform:translateX(-50%) translateY(-30px);opacity:0;}}
+
+/* Boon overlay */
+#boon-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:50;flex-direction:column;align-items:center;justify-content:center;gap:20px;}
+#boon-overlay h2{font-size:14px;color:#cc88ff;text-shadow:2px 2px 0 #440066;}
+#boon-cards{display:flex;gap:16px;}
+.boon-card{width:180px;border:2px solid #553377;background:#100020;padding:16px;cursor:pointer;transition:background .1s;}
+.boon-card:hover{background:#220044;border-color:#aa55ff;}
+.boon-card h3{font-size:8px;color:#cc88ff;margin-bottom:8px;}
+.boon-card p{font-size:6px;color:#aaaacc;line-height:1.6;}
+.boon-card .key{font-size:6px;color:#555577;margin-top:8px;}
+
+/* Game over */
+#over{display:none;position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:60;flex-direction:column;align-items:center;justify-content:center;gap:12px;}
+#over h1{font-size:24px;color:#ff3333;text-shadow:3px 3px 0 #330000;}
+#over p{font-size:8px;color:#cccccc;}
+#over small{font-size:7px;color:#555577;}
+#over button{margin-top:12px;font-family:'Press Start 2P',monospace;background:#0a001a;color:#4488ff;border:2px solid #4488ff;padding:10px 24px;font-size:9px;cursor:pointer;}
+#over button:hover{background:#1a0044;}
+
+/* Menu */
+#menu{position:fixed;inset:0;background:#000;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;}
+#menu h1{font-size:26px;color:#cc88ff;text-shadow:3px 3px 0 #440066,0 0 40px #8844aa;margin-bottom:6px;}
+#menu p{font-size:8px;color:#555588;}
+#menu .ctrl{font-size:7px;color:#333366;margin:2px 0;}
+#menu #mbest{font-size:7px;color:#333355;margin-top:6px;}
+#menu button{margin-top:14px;font-family:'Press Start 2P',monospace;background:#1a0033;color:#cc88ff;border:2px solid #8844aa;padding:12px 32px;font-size:12px;cursor:pointer;box-shadow:3px 3px 0 #330066;}
+#menu button:hover{background:#330055;color:#fff;}
 </style>
 </head>
 <body>
-<div id="menu">
-  <h1>SOULBOUND</h1>
-  <p class="mline">Absorb souls. Build your party. Escape.</p>
-  <p class="mctrl">WASD — Move &nbsp;|&nbsp; SPACE — Attack &nbsp;|&nbsp; SHIFT — Dodge</p>
-  <p class="mctrl">Kill enemies → absorb soul orbs → gain companions</p>
-  <p class="mctrl">Clear the room → walk to the top door → pick a boon</p>
-  <p id="stats"></p>
-  <button id="play-btn">▶ &nbsp;START</button>
+<canvas id="c"></canvas>
+
+<!-- HUD -->
+<div id="hud">
+  <div id="hp-wrap">
+    <div id="hp-label">HP <span id="hp-num">100</span>/<span id="hp-max">100</span></div>
+    <div id="hp-bg"><div id="hp-fg" style="width:100%"></div></div>
+  </div>
+  <div id="room-lbl">ROOM 1</div>
+  <div id="souls-bar">
+    <div class="soul-slot" id="slot0"><div class="soul-dot" style="background:#333"></div><div class="soul-info"><div class="soul-name">EMPTY</div></div></div>
+    <div class="soul-slot" id="slot1"><div class="soul-dot" style="background:#333"></div><div class="soul-info"><div class="soul-name">EMPTY</div></div></div>
+    <div class="soul-slot" id="slot2"><div class="soul-dot" style="background:#333"></div><div class="soul-info"><div class="soul-name">EMPTY</div></div></div>
+    <div class="soul-slot" id="slot3"><div class="soul-dot" style="background:#333"></div><div class="soul-info"><div class="soul-name">EMPTY</div></div></div>
+  </div>
 </div>
 
-<script>
-// Stats
+<!-- Boon selection -->
+<div id="boon-overlay">
+  <h2>— CHOOSE A BOON —</h2>
+  <div id="boon-cards"></div>
+</div>
+
+<!-- Game Over -->
+<div id="over">
+  <h1>YOU DIED</h1>
+  <p id="over-room">Reached Room 1</p>
+  <p id="over-best"></p>
+  <small>Press ENTER or click to try again</small>
+  <button onclick="restartGame()">TRY AGAIN</button>
+</div>
+
+<!-- Menu -->
+<div id="menu">
+  <h1>SOULBOUND</h1>
+  <p>3D Low-Poly Roguelike</p>
+  <p class="ctrl">WASD — Move &nbsp;|&nbsp; SPACE — Attack &nbsp;|&nbsp; SHIFT — Dodge</p>
+  <p class="ctrl">Kill enemies → absorb soul orbs → gain companions</p>
+  <p class="ctrl">Clear the room → walk to the north door → pick a boon</p>
+  <p id="mbest"></p>
+  <button onclick="startGame()">▶ &nbsp;PLAY</button>
+</div>
+
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
+<script type="module">
+import * as THREE from 'three';
+
+// ── STATS ─────────────────────────────────────────────
 const sbR=parseInt(localStorage.getItem('sb_runs')||'0');
 const sbB=parseInt(localStorage.getItem('sb_best')||'0');
-if(sbR>0) document.getElementById('stats').textContent=`RUNS: ${sbR}   BEST: ROOM ${sbB}`;
+if(sbR>0){
+  document.getElementById('mbest').textContent=`RUNS: ${sbR}   BEST: ROOM ${sbB}`;
+}
 
-// Base resolution x zoom
-const BW=320, BH=208, ZOOM=3;
-const WALL=16; // wall thickness in base px
-
+// ── BOONS ─────────────────────────────────────────────
 const BOONS=[
-  {id:'iron',   name:'IRON SKIN',    desc:'+20 MAX HP',         apply:p=>{p.maxHp+=20;p.hp=Math.min(p.hp+20,p.maxHp);}},
-  {id:'swift',  name:'SWIFT BLADE',  desc:'FASTER ATTACKS',     apply:p=>{p.atkCd=Math.max(0.15,p.atkCd-0.1);}},
-  {id:'life',   name:'LIFESTEAL',    desc:'HEAL 5 PER KILL',    apply:p=>{p.lifesteal+=5;}},
-  {id:'berserk',name:'BERSERKER',    desc:'+25% DMG <50% HP',   apply:p=>{p.berserker=true;}},
-  {id:'slink',  name:'SOUL LINK',    desc:'+5% DMG/SOUL',       apply:p=>{p.soulLink=true;}},
-  {id:'tough',  name:'TOUGHNESS',    desc:'TAKE 10% LESS DMG',  apply:p=>{p.dmgRes=Math.min(0.5,(p.dmgRes||0)+0.1);}},
-  {id:'speed',  name:'FLEET FOOT',   desc:'+15% SPEED',         apply:p=>{p.spd=Math.min(120,p.spd*1.15);}},
+  {id:'iron',  name:'IRON SKIN',   desc:'+20 Max HP',          apply:p=>{p.maxHp+=20;p.hp=Math.min(p.hp+20,p.maxHp);}},
+  {id:'swift', name:'SWIFT BLADE', desc:'Attack speed up',     apply:p=>{p.atkCd=Math.max(0.15,p.atkCd-0.1);}},
+  {id:'life',  name:'LIFESTEAL',   desc:'Heal 5 HP per kill',  apply:p=>{p.lifesteal+=5;}},
+  {id:'bersrk',name:'BERSERKER',   desc:'+25% dmg <50% HP',    apply:p=>{p.berserker=true;}},
+  {id:'slink', name:'SOUL LINK',   desc:'+5% dmg per soul',    apply:p=>{p.soulLink=true;}},
+  {id:'tough', name:'TOUGHNESS',   desc:'10% less damage',     apply:p=>{p.dmgRes=Math.min(0.5,(p.dmgRes||0)+0.1);}},
+  {id:'speed', name:'FLEET FOOT',  desc:'+15% move speed',     apply:p=>{p.spd=Math.min(10,p.spd*1.15);}},
 ];
-
 const SOUL_DEF={
-  bone:  {name:'BONE SHIELD',desc:'10% LESS DAMAGE', col:0xddcc88},
-  shadow:{name:'SHADOW STEP',desc:'DODGE CD -30%',   col:0xaa55ff},
-  fury:  {name:'FURY',       desc:'+15% ATK DMG',    col:0xff5522},
+  bone:  {name:'BONE SHIELD',desc:'10% less damage', col:0xddcc88,css:'#ddcc88'},
+  shadow:{name:'SHADOW STEP',desc:'Dodge cd -30%',   col:0xaa55ff,css:'#aa55ff'},
+  fury:  {name:'FURY',       desc:'+15% atk dmg',    col:0xff5522,css:'#ff5522'},
 };
 
-const ENEMY_DEF=[
-  {type:'skeleton',name:'SKELETON',  key:'skeleton', hp:40, spd:28, dmg:12, soul:'bone',   ranged:false,charge:false},
-  {type:'wisp',    name:'WISP',      key:'wisp',     hp:25, spd:55, dmg:8,  soul:'shadow', ranged:true, charge:false},
-  {type:'demon',   name:'RAGE DEMON',key:'demon',    hp:60, spd:20, dmg:18, soul:'fury',   ranged:false,charge:true },
-];
+// ── THREE.JS SETUP ────────────────────────────────────
+const renderer=new THREE.WebGLRenderer({canvas:document.getElementById('c'),antialias:true});
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.shadowMap.enabled=true;
+renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.setSize(window.innerWidth,window.innerHeight);
+renderer.setClearColor(0x050510);
 
-// ─── GAME SCENE ──────────────────────────────────────────────
-class GameScene extends Phaser.Scene {
-  constructor(){super({key:'Game'});}
+const scene=new THREE.Scene();
+scene.fog=new THREE.FogExp2(0x050510,0.04);
 
-  preload(){
-    ['player','skeleton','wisp','demon','orb','floor','wall','door_closed','door_open','proj']
-      .forEach(k=>this.load.image(k,`assets/${k}.png`));
+const camera=new THREE.PerspectiveCamera(55,window.innerWidth/window.innerHeight,0.1,200);
+camera.position.set(0,18,14);
+camera.lookAt(0,0,0);
+
+window.addEventListener('resize',()=>{
+  renderer.setSize(window.innerWidth,window.innerHeight);
+  camera.aspect=window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+});
+
+// Lighting
+const ambient=new THREE.AmbientLight(0x223355,0.8);
+scene.add(ambient);
+const sun=new THREE.DirectionalLight(0xffffff,1.2);
+sun.position.set(5,12,8);
+sun.castShadow=true;
+sun.shadow.mapSize.set(1024,1024);
+sun.shadow.camera.near=0.1;
+sun.shadow.camera.far=60;
+sun.shadow.camera.left=-20;sun.shadow.camera.right=20;
+sun.shadow.camera.top=20;sun.shadow.camera.bottom=-20;
+scene.add(sun);
+
+// ── MATERIALS (flat-shaded) ───────────────────────────
+const mat=(color,emissive=0)=>new THREE.MeshLambertMaterial({color,emissive,flatShading:true});
+
+// ── PLAYER ────────────────────────────────────────────
+function makePlayer(){
+  const g=new THREE.Group();
+  // Body
+  const body=new THREE.Mesh(new THREE.CylinderGeometry(0.28,0.32,0.8,6),mat(0x3366cc));
+  body.position.y=0.5; body.castShadow=true; g.add(body);
+  // Head
+  const head=new THREE.Mesh(new THREE.SphereGeometry(0.22,6,6),mat(0xffcc99));
+  head.position.y=1.1; head.castShadow=true; g.add(head);
+  // Sword
+  const sword=new THREE.Mesh(new THREE.BoxGeometry(0.08,0.5,0.08),mat(0xaaaaaa));
+  sword.position.set(0.4,0.7,0); sword.castShadow=true; g.add(sword);
+  // Cape
+  const cape=new THREE.Mesh(new THREE.ConeGeometry(0.2,0.4,5),mat(0x2244aa));
+  cape.position.set(0,0.3,-0.15); cape.rotation.x=0.4; g.add(cape);
+  return g;
+}
+
+// ── ENEMIES ───────────────────────────────────────────
+function makeSkeleton(){
+  const g=new THREE.Group();
+  const body=new THREE.Mesh(new THREE.CylinderGeometry(0.18,0.22,0.9,5),mat(0xddddbb));
+  body.position.y=0.5; body.castShadow=true; g.add(body);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(0.2,5,4),mat(0xeeeecc));
+  head.position.y=1.1; head.castShadow=true; g.add(head);
+  // Eye glow
+  const eye=new THREE.Mesh(new THREE.SphereGeometry(0.05,4,4),mat(0x00ffff,0x00aaaa));
+  eye.position.set(0.07,1.12,0.17); g.add(eye);
+  const eye2=eye.clone(); eye2.position.x=-0.07; g.add(eye2);
+  return g;
+}
+
+function makeWisp(){
+  const g=new THREE.Group();
+  const body=new THREE.Mesh(new THREE.SphereGeometry(0.3,6,5),mat(0x9933cc,0x4411aa));
+  body.castShadow=true; g.add(body);
+  const glow=new THREE.PointLight(0xaa44ff,1.5,4);
+  g.add(glow);
+  const inner=new THREE.Mesh(new THREE.SphereGeometry(0.15,5,4),mat(0xffffff,0xffffff));
+  g.add(inner);
+  return g;
+}
+
+function makeDemon(){
+  const g=new THREE.Group();
+  const body=new THREE.Mesh(new THREE.BoxGeometry(0.7,0.6,0.5),mat(0xcc2200));
+  body.position.y=0.4; body.castShadow=true; g.add(body);
+  const head=new THREE.Mesh(new THREE.ConeGeometry(0.28,0.4,5),mat(0xaa1100));
+  head.position.y=1.0; head.castShadow=true; g.add(head);
+  // Horns
+  const horn=new THREE.Mesh(new THREE.ConeGeometry(0.06,0.25,4),mat(0x330000));
+  horn.position.set(0.15,1.28,0); horn.rotation.z=-0.3; g.add(horn);
+  const horn2=horn.clone(); horn2.position.x=-0.15; horn2.rotation.z=0.3; g.add(horn2);
+  return g;
+}
+
+// ── ROOM ──────────────────────────────────────────────
+const ROOM=14; // half-size
+let roomGroup=null, torches=[], doorMesh=null, doorLight=null;
+
+function buildRoom(){
+  if(roomGroup){scene.remove(roomGroup);}
+  roomGroup=new THREE.Group();
+  torches=[];
+
+  // Floor
+  const floor=new THREE.Mesh(
+    new THREE.PlaneGeometry(ROOM*2,ROOM*2,10,10),
+    new THREE.MeshLambertMaterial({color:0x1a1a2e,flatShading:true})
+  );
+  floor.rotation.x=-Math.PI/2;
+  floor.receiveShadow=true;
+  roomGroup.add(floor);
+
+  // Grid lines on floor
+  const grid=new THREE.GridHelper(ROOM*2,14,0x223355,0x111133);
+  grid.position.y=0.01;
+  roomGroup.add(grid);
+
+  // Walls
+  const wallMat=new THREE.MeshLambertMaterial({color:0x223,flatShading:true});
+  const wallH=3, wallT=0.5;
+  // North wall (with door gap)
+  const wn1=new THREE.Mesh(new THREE.BoxGeometry(ROOM-1.5,wallH,wallT),wallMat);
+  wn1.position.set(-(ROOM+1.5)/2+0.25,wallH/2,-ROOM); wn1.castShadow=true; wn1.receiveShadow=true;
+  roomGroup.add(wn1);
+  const wn2=new THREE.Mesh(new THREE.BoxGeometry(ROOM-1.5,wallH,wallT),wallMat);
+  wn2.position.set((ROOM+1.5)/2-0.25,wallH/2,-ROOM); wn2.castShadow=true; wn2.receiveShadow=true;
+  roomGroup.add(wn2);
+  // South
+  const ws=new THREE.Mesh(new THREE.BoxGeometry(ROOM*2,wallH,wallT),wallMat);
+  ws.position.set(0,wallH/2,ROOM); ws.castShadow=true; ws.receiveShadow=true;
+  roomGroup.add(ws);
+  // East
+  const we=new THREE.Mesh(new THREE.BoxGeometry(wallT,wallH,ROOM*2),wallMat);
+  we.position.set(ROOM,wallH/2,0); we.castShadow=true; we.receiveShadow=true;
+  roomGroup.add(we);
+  // West
+  const ww=we.clone(); ww.position.x=-ROOM;
+  roomGroup.add(ww);
+
+  // Door
+  doorMesh=new THREE.Mesh(
+    new THREE.BoxGeometry(3,wallH,wallT),
+    new THREE.MeshLambertMaterial({color:0x331122,flatShading:true})
+  );
+  doorMesh.position.set(0,wallH/2,-ROOM);
+  doorMesh.castShadow=true;
+  roomGroup.add(doorMesh);
+  doorLight=new THREE.PointLight(0xff2244,0,6);
+  doorLight.position.set(0,1.5,-ROOM+1);
+  roomGroup.add(doorLight);
+
+  // Torches at corners
+  const torchPositions=[
+    [-ROOM+1.5,0,-ROOM+1.5],[ROOM-1.5,0,-ROOM+1.5],
+    [-ROOM+1.5,0,ROOM-1.5],[ROOM-1.5,0,ROOM-1.5]
+  ];
+  torchPositions.forEach(([tx,ty,tz])=>{
+    const t=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.07,0.4,5),mat(0x553311));
+    t.position.set(tx,0.2,tz); roomGroup.add(t);
+    const flame=new THREE.Mesh(new THREE.ConeGeometry(0.1,0.25,5),mat(0xff8800,0xff5500));
+    flame.position.set(tx,0.55,tz); roomGroup.add(flame);
+    const tl=new THREE.PointLight(0xff8844,1.5,6);
+    tl.position.set(tx,0.7,tz);
+    roomGroup.add(tl);
+    torches.push({light:tl,flame,base:1.5});
+  });
+
+  scene.add(roomGroup);
+}
+
+function openDoor(){
+  doorMesh.material.color.setHex(0x004400);
+  doorMesh.material.emissive.setHex(0x002200);
+  doorLight.color.setHex(0x00ff44);
+  doorLight.intensity=2;
+}
+
+// ── GAME STATE ────────────────────────────────────────
+let player, playerState, enemies, projectiles, orbObjects, camTarget;
+let roomNum=0, cleared=false, boonUp=false, gameRunning=false;
+let souls=[];
+let keys={};
+
+function initGame(){
+  // Clear old
+  if(player) scene.remove(player);
+  enemies=[]; projectiles=[]; orbObjects=[]; souls=[];
+  document.querySelectorAll('.dmg').forEach(d=>d.remove());
+
+  player=makePlayer();
+  playerState={
+    x:0,z:10,y:0, vy:0,
+    hp:100,maxHp:100,spd:6,
+    atkCd:0.5,atkT:0,
+    dodgeCd:1.2,dodgeT:0,
+    dodging:false,dodgeDur:0,dvx:0,dvz:0,
+    fx:0,fz:-1,
+    lifesteal:0,berserker:false,soulLink:false,dmgRes:0,
+    dead:false,
+  };
+  player.position.set(0,0,10);
+  scene.add(player);
+  camTarget=new THREE.Vector3(0,0,0);
+  roomNum=0;
+  nextRoom();
+}
+
+function nextRoom(){
+  roomNum++;
+  cleared=false; boonUp=false;
+  enemies.forEach(e=>{scene.remove(e.mesh);});
+  enemies=[];
+  projectiles.forEach(p=>{scene.remove(p.mesh);});
+  projectiles=[];
+  orbObjects.forEach(o=>{scene.remove(o.mesh);if(o.light)scene.remove(o.light);});
+  orbObjects=[];
+  document.querySelectorAll('.dmg').forEach(d=>d.remove());
+
+  buildRoom();
+
+  const boss=roomNum%5===0;
+  const cnt=boss?1:Math.floor(Math.random()*3)+3+Math.floor(roomNum/3);
+  for(let i=0;i<cnt;i++){
+    const types=boss?[2]:[0,1,2];
+    spawnEnemy(types[Math.floor(Math.random()*types.length)]);
   }
 
-  create(){
-    this.souls=[]; this.boons=[];
-    this.enemies=[]; this.projs=[]; this.orbs=[];
-    this.room=0; this.orbT=0;
+  playerState.x=0; playerState.z=10;
+  player.position.set(0,0,10);
+  document.getElementById('room-lbl').textContent=`ROOM ${roomNum}`;
+  updateHUD();
+}
 
-    this.p={
-      x:BW/2, y:BH-WALL-12,
-      hp:100, maxHp:100, spd:70,
-      atkCd:0.5, atkT:0,
-      dodgeCd:1.2, dodgeT:0,
-      dodging:false, dodgeDur:0, dvx:0, dvy:0,
-      fx:0, fy:-1,
-      lifesteal:0, berserker:false, soulLink:false, dmgRes:0,
-      dead:false,
-    };
+function spawnEnemy(type){
+  let ex,ez,att=0;
+  do{
+    ex=(Math.random()-0.5)*(ROOM*2-4);
+    ez=(Math.random()-0.5)*(ROOM*2-4);
+    att++;
+  }while(Math.sqrt(ex*ex+ez*ez)<5&&att<20);
 
-    this.buildRoom();
-    this.setupUI();
+  let mesh,hp,spd,dmg,soul,ranged=false,charge=false;
+  if(type===0){mesh=makeSkeleton();hp=40;spd=3;dmg=12;soul='bone';}
+  else if(type===1){mesh=makeWisp();hp=25;spd=6;dmg=8;soul='shadow';ranged=true;}
+  else{mesh=makeDemon();hp=60;spd=2;dmg=18;soul='fury';charge=true;}
 
-    this.keys=this.input.keyboard.addKeys({
-      up:Phaser.Input.Keyboard.KeyCodes.W,
-      dn:Phaser.Input.Keyboard.KeyCodes.S,
-      lt:Phaser.Input.Keyboard.KeyCodes.A,
-      rt:Phaser.Input.Keyboard.KeyCodes.D,
-      atk:Phaser.Input.Keyboard.KeyCodes.SPACE,
-      dodge:Phaser.Input.Keyboard.KeyCodes.SHIFT,
-    });
-  }
+  if(roomNum%5===0&&type===2){hp=200;spd=3.5;dmg=22;}
 
-  buildRoom(){
-    this.room++;
-    this.cleared=false; this.boonUp=false;
-    this.enemies.forEach(e=>{e.s?.destroy();e.hbBg?.destroy();e.hbFg?.destroy();});
-    this.enemies=[];
-    this.projs.forEach(p=>p.s?.destroy()); this.projs=[];
-    this.orbs.forEach(o=>o.s?.destroy());  this.orbs=[];
-    if(this.bg) this.bg.destroy();
-    if(this.doorSpr) this.doorSpr.destroy();
+  mesh.position.set(ex,0,ez);
+  mesh.castShadow=true;
+  scene.add(mesh);
 
-    // Tiled floor
-    this.bg=this.add.graphics().setDepth(-1);
-    const ts=16;
-    for(let tx=WALL;tx<BW-WALL;tx+=ts)
-      for(let ty=WALL;ty<BH-WALL-16;ty+=ts)
-        this.add.image(tx+ts/2,ty+ts/2,'floor').setDepth(-1).setScale(1);
+  const hpEl=document.createElement('div');
+  hpEl.style.cssText='position:fixed;pointer-events:none;z-index:15;';
+  hpEl.innerHTML=`<div style="width:30px;height:3px;background:#330000;"><div class="ehpfg" style="height:100%;background:#cc4444;width:100%;"></div></div>`;
+  document.body.appendChild(hpEl);
 
-    // Walls (solid color bands, sprites would tile weirdly)
-    this.bg.fillStyle(0x1a1a33);
-    this.bg.fillRect(0,0,BW,WALL);
-    this.bg.fillRect(0,BH-WALL,BW,WALL);
-    this.bg.fillRect(0,0,WALL,BH);
-    this.bg.fillRect(BW-WALL,0,WALL,BH);
-    // Wall top detail
-    this.bg.lineStyle(1,0x334466);
-    this.bg.strokeRect(WALL,WALL,BW-WALL*2,BH-WALL*2-16);
+  enemies.push({mesh,hp,maxHp:hp,spd,dmg,soul,ranged,charge,
+    x:ex,z:ez,aiT:Math.random(),projT:1.5,chargeT:0,charging:false,cvx:0,cvz:0,dead:false,
+    hpEl,fx:0,fz:1});
+}
 
-    // Door sprite (top center)
-    this.doorSpr=this.add.image(BW/2,8,'door_closed').setDepth(1).setScale(1);
+function spawnOrb(x,z,soulId){
+  const orb=new THREE.Mesh(new THREE.SphereGeometry(0.2,8,6),mat(0xffee44,0xffbb00));
+  orb.position.set(x,0.4,z);
+  orb.castShadow=false;
+  scene.add(orb);
+  const light=new THREE.PointLight(0xffee44,1.5,3);
+  light.position.copy(orb.position);
+  scene.add(light);
+  orbObjects.push({mesh:orb,light,x,z,baseY:0.4,t:Math.random()*6.28,soulId,gone:false});
+}
 
-    // Spawn enemies
-    const boss=this.room%5===0;
-    const cnt=boss?1:Phaser.Math.Between(3,4+Math.floor(this.room/3));
-    for(let i=0;i<cnt;i++){
-      const def=boss?{...ENEMY_DEF[2],name:'BOSS',key:'demon',hp:200,spd:38,dmg:22}
-        :ENEMY_DEF[Phaser.Math.Between(0,ENEMY_DEF.length-1)];
-      this.spawnEnemy(def);
+// ── INPUT ─────────────────────────────────────────────
+document.addEventListener('keydown',e=>{keys[e.code]=true;});
+document.addEventListener('keyup',e=>{keys[e.code]=false;});
+
+// ── PLAYER DAMAGE CALC ────────────────────────────────
+function pDmg(p){
+  let d=20;
+  if(souls.find(s=>s&&s.id==='fury')) d*=1.15;
+  if(p.berserker&&p.hp<p.maxHp*0.5) d*=1.25;
+  if(p.soulLink) d*=1+souls.filter(s=>s).length*0.05;
+  return Math.floor(d);
+}
+
+// ── UPDATE ────────────────────────────────────────────
+let lastTime=0, orbT=0, torchT=0;
+
+function update(time){
+  requestAnimationFrame(update);
+  const dt=Math.min((time-lastTime)/1000, 0.05);
+  lastTime=time;
+  if(!gameRunning){renderer.render(scene,camera);return;}
+  if(playerState.dead||boonUp){renderer.render(scene,camera);return;}
+
+  const p=playerState;
+  orbT+=dt; torchT+=dt;
+
+  // Torch flicker
+  torches.forEach(t=>{
+    t.light.intensity=t.base+Math.sin(torchT*7+t.base)*0.4;
+    t.flame.scale.y=0.9+Math.sin(torchT*9)*0.15;
+  });
+
+  // ── PLAYER MOVE ────────────────────────────────────
+  if(p.dodging){
+    p.dodgeDur-=dt;
+    if(p.dodgeDur<=0) p.dodging=false;
+    p.x=Math.max(-ROOM+1,Math.min(ROOM-1,p.x+p.dvx*dt));
+    p.z=Math.max(-ROOM+1,Math.min(ROOM-1,p.z+p.dvz*dt));
+  }else{
+    let vx=0,vz=0;
+    if(keys['KeyA']||keys['ArrowLeft'])  vx-=1;
+    if(keys['KeyD']||keys['ArrowRight']) vx+=1;
+    if(keys['KeyW']||keys['ArrowUp'])    vz-=1;
+    if(keys['KeyS']||keys['ArrowDown'])  vz+=1;
+    if(vx||vz){
+      const l=Math.sqrt(vx*vx+vz*vz);
+      vx/=l; vz/=l;
+      p.fx=vx; p.fz=vz;
+      p.x=Math.max(-ROOM+1,Math.min(ROOM-1,p.x+vx*p.spd*dt));
+      p.z=Math.max(-ROOM+1,Math.min(ROOM-1,p.z+vz*p.spd*dt));
     }
-
-    this.p.x=BW/2; this.p.y=BH-WALL-12;
-    if(!this.pSprite){
-      this.pSprite=this.add.image(this.p.x,this.p.y,'player').setDepth(5);
-      this.atkGfx=this.add.graphics().setDepth(4);
-    }
-    if(this.roomLbl) this.roomLbl.setText(`ROOM ${this.room}`);
-  }
-
-  openDoor(){
-    this.doorSpr.setTexture('door_open');
-  }
-
-  spawnEnemy(def){
-    let ex,ey,att=0;
-    do{
-      ex=Phaser.Math.Between(WALL+10,BW-WALL-10);
-      ey=Phaser.Math.Between(WALL+10,BH-WALL-40);
-      att++;
-    }while(Phaser.Math.Distance.Between(ex,ey,this.p.x,this.p.y)<60&&att<20);
-
-    const s=this.add.image(ex,ey,def.key).setDepth(3);
-    const hbBg=this.add.graphics().setDepth(4);
-    const hbFg=this.add.graphics().setDepth(4);
-    const e={...def,x:ex,y:ey,maxHp:def.hp,
-      aiT:Math.random()*0.5,projT:1,chargeT:0,charging:false,cvx:0,cvy:0,dead:false,
-      s,hbBg,hbFg};
-    this.enemies.push(e);
-    this.drawHpBar(e);
-  }
-
-  drawHpBar(e){
-    e.hbBg.clear(); e.hbFg.clear();
-    if(e.dead)return;
-    const bw=14;
-    e.hbBg.fillStyle(0x220000); e.hbBg.fillRect(e.x-bw/2,e.y-12,bw,3);
-    const pct=Math.max(0,e.hp/e.maxHp);
-    const col=pct>0.6?0x44cc44:pct>0.3?0xffaa00:0xff2222;
-    e.hbFg.fillStyle(col); e.hbFg.fillRect(e.x-bw/2,e.y-12,Math.round(bw*pct),3);
-  }
-
-  setupUI(){
-    // HP bg
-    this.uiHpBg=this.add.graphics().setDepth(10);
-    this.uiHpFg=this.add.graphics().setDepth(10);
-    this.uiHpTxt=this.add.text(3,3,'',{fontFamily:"'Press Start 2P'",fontSize:'5px',fill:'#ffffff'}).setDepth(11);
-    this.roomLbl=this.add.text(BW-3,3,`ROOM ${this.room}`,{fontFamily:"'Press Start 2P'",fontSize:'5px',fill:'#aaaaff'}).setOrigin(1,0).setDepth(11);
-
-    // Companion bar (bottom)
-    const bbar=this.add.graphics().setDepth(10);
-    bbar.fillStyle(0x000000,0.85); bbar.fillRect(0,BH-18,BW,18);
-    bbar.lineStyle(1,0x223355); bbar.lineBetween(0,BH-18,BW,BH-18);
-
-    this.soulSlots=[];
-    for(let i=0;i<4;i++){
-      const sx=2+i*(BW/4);
-      this.soulSlots.push({
-        ico:this.add.graphics().setDepth(11),
-        nm: this.add.text(sx+11,BH-16,'',{fontFamily:"'Press Start 2P'",fontSize:'4px',fill:'#ffffff'}).setDepth(12),
-        ds: this.add.text(sx+11,BH-9,'',{fontFamily:"'Press Start 2P'",fontSize:'3px',fill:'#aaaacc'}).setDepth(12),
-        sx,
-      });
-    }
-  }
-
-  redrawUI(){
-    const p=this.p;
-    this.uiHpBg.clear(); this.uiHpBg.fillStyle(0x220000); this.uiHpBg.fillRect(2,11,64,5);
-    this.uiHpFg.clear();
-    const pct=Math.max(0,p.hp/p.maxHp);
-    this.uiHpFg.fillStyle(pct>0.6?0x44cc44:pct>0.3?0xffaa00:0xff2222);
-    this.uiHpFg.fillRect(2,11,Math.round(64*pct),5);
-    this.uiHpTxt.setText(`HP ${Math.max(0,p.hp)}/${p.maxHp}`);
-
-    this.soulSlots.forEach((sl,i)=>{
-      sl.ico.clear();
-      if(this.souls[i]){
-        const s=this.souls[i];
-        const c='#'+s.col.toString(16).padStart(6,'0');
-        sl.ico.fillStyle(s.col); sl.ico.fillRect(sl.sx,BH-16,7,7);
-        sl.nm.setText(s.name.slice(0,11)).setFill('#ffffff');
-        sl.ds.setText(s.desc.slice(0,14)).setFill('#aaaacc');
-      }else{
-        sl.ico.fillStyle(0x111133); sl.ico.fillRect(sl.sx,BH-16,7,7);
-        sl.nm.setText('EMPTY').setFill('#223');
-        sl.ds.setText('');
-      }
-    });
-  }
-
-  update(_t,delta){
-    if(this.p.dead||this.boonUp) return;
-    const dt=delta/1000;
-    this.movePlayer(dt);
-    this.doAttack(dt);
-    this.moveEnemies(dt);
-    this.moveProjs(dt);
-    this.animOrbs(dt);
-    this.checkClear();
-    // Update player sprite
-    this.pSprite.setPosition(this.p.x,this.p.y);
-    this.pSprite.setAlpha(this.p.dodging?0.45:1);
-    // flip sprite based on facing
-    if(this.p.fx<0) this.pSprite.setFlipX(true);
-    else if(this.p.fx>0) this.pSprite.setFlipX(false);
-    this.redrawUI();
-  }
-
-  pDmg(){
-    let d=20;
-    if(this.souls.find(s=>s&&s.id==='fury')) d*=1.15;
-    if(this.p.berserker&&this.p.hp<this.p.maxHp*0.5) d*=1.25;
-    if(this.p.soulLink) d*=1+this.souls.filter(s=>s).length*0.05;
-    return Math.floor(d);
-  }
-
-  movePlayer(dt){
-    const p=this.p,k=this.keys;
-    if(p.dodging){
-      p.dodgeDur-=dt;
-      if(p.dodgeDur<=0) p.dodging=false;
-      p.x=Phaser.Math.Clamp(p.x+p.dvx*dt,WALL+8,BW-WALL-8);
-      p.y=Phaser.Math.Clamp(p.y+p.dvy*dt,WALL+8,BH-WALL-26);
-      return;
-    }
-    let vx=0,vy=0;
-    if(k.lt.isDown)vx-=1; if(k.rt.isDown)vx+=1;
-    if(k.up.isDown)vy-=1; if(k.dn.isDown)vy+=1;
-    if(vx||vy){const l=Math.sqrt(vx*vx+vy*vy);vx/=l;vy/=l;p.fx=vx;p.fy=vy;}
-    p.x=Phaser.Math.Clamp(p.x+vx*p.spd*dt,WALL+8,BW-WALL-8);
-    p.y=Phaser.Math.Clamp(p.y+vy*p.spd*dt,WALL+8,BH-WALL-26);
     p.dodgeT=Math.max(0,p.dodgeT-dt);
-    if(Phaser.Input.Keyboard.JustDown(k.dodge)&&p.dodgeT<=0){
-      const ddx=vx||p.fx,ddy=vy||p.fy,l=Math.sqrt(ddx*ddx+ddy*ddy)||1;
-      p.dvx=(ddx/l)*180; p.dvy=(ddy/l)*180;
-      p.dodging=true; p.dodgeDur=0.2;
-      p.dodgeT=this.souls.find(s=>s&&s.id==='shadow')?p.dodgeCd*0.7:p.dodgeCd;
+    if(keys['ShiftLeft']&&p.dodgeT<=0){
+      const ddx=vx||p.fx, ddz=vz||p.fz;
+      const l=Math.sqrt(ddx*ddx+ddz*ddz)||1;
+      p.dvx=(ddx/l)*18; p.dvz=(ddz/l)*18;
+      p.dodging=true; p.dodgeDur=0.22;
+      p.dodgeT=souls.find(s=>s&&s.id==='shadow')?p.dodgeCd*0.7:p.dodgeCd;
+      keys['ShiftLeft']=false;
     }
   }
 
-  doAttack(dt){
-    const p=this.p;
-    p.atkT=Math.max(0,p.atkT-dt);
-    if(!Phaser.Input.Keyboard.JustDown(this.keys.atk)||p.atkT>0)return;
+  player.position.set(p.x,0,p.z);
+  player.material&&(player.material.opacity=p.dodging?0.45:1);
+  player.traverse(m=>{if(m.isMesh)m.material.opacity=p.dodging?0.45:1;m.material&&(m.material.transparent=p.dodging);});
+  if(p.fx||p.fz) player.rotation.y=Math.atan2(p.fx,p.fz);
+
+  // ── ATTACK ─────────────────────────────────────────
+  p.atkT=Math.max(0,p.atkT-dt);
+  if(keys['Space']&&p.atkT<=0){
     p.atkT=p.atkCd;
-    const dmg=this.pDmg(), range=26;
-
-    this.atkGfx.clear();
-    this.atkGfx.fillStyle(0xffffff,0.7);
-    this.atkGfx.fillRect(p.x+p.fx*14-5,p.y+p.fy*14-5,10,10);
-    this.tweens.add({targets:this.atkGfx,alpha:0,duration:120,
-      onComplete:()=>{this.atkGfx.setAlpha(1);}});
-
-    this.enemies.forEach(e=>{
+    keys['Space']=false;
+    const dmg=pDmg(p), range=3.5;
+    enemies.forEach(e=>{
       if(e.dead)return;
-      const dx=e.x-p.x,dy=e.y-p.y,dist=Math.sqrt(dx*dx+dy*dy);
-      if(dist>range)return;
-      const dot=(dx/dist)*p.fx+(dy/dist)*p.fy;
-      if(dot<0.1)return;
+      const dx=e.x-p.x, dz=e.z-p.z, dist=Math.sqrt(dx*dx+dz*dz);
+      if(dist>range) return;
+      const dot=(dx/dist)*p.fx+(dz/dist)*p.fz;
+      if(dot<0.1) return;
       e.hp-=dmg;
-      this.floatNum(e.x,e.y-10,dmg,'#ffffff');
-      this.tweens.add({targets:e.s,alpha:0.2,yoyo:true,duration:60});
+      floatDmg(e.x,e.z+0.5,dmg,'#ffffff');
       if(e.hp<=0){
         e.dead=true;
-        this.p.hp=Math.min(this.p.maxHp,this.p.hp+this.p.lifesteal);
-        e.s.destroy();e.hbBg.destroy();e.hbFg.destroy();
-        if(Math.random()<0.4) this.dropOrb(e);
-      }else{
-        this.drawHpBar(e);
+        p.hp=Math.min(p.maxHp,p.hp+p.lifesteal);
+        scene.remove(e.mesh);
+        e.hpEl.remove();
+        if(Math.random()<0.4) spawnOrb(e.x,e.z,e.soul);
       }
     });
+    // Attack flash on sword
+    const sw=player.children[2];
+    if(sw){
+      sw.material.emissive.setHex(0xffffff);
+      setTimeout(()=>sw.material.emissive.setHex(0),120);
+    }
   }
 
-  dropOrb(e){
-    const sd=SOUL_DEF[e.soul];
-    const s=this.add.image(e.x,e.y,'orb').setDepth(3);
-    this.orbs.push({id:e.soul,name:sd.name,desc:sd.desc,col:sd.col,x:e.x,y:e.y,s,baseY:e.y});
-  }
+  // ── ENEMY AI ───────────────────────────────────────
+  enemies.forEach(e=>{
+    if(e.dead)return;
+    e.aiT-=dt;
+    const dx=p.x-e.x, dz=p.z-e.z, dist=Math.sqrt(dx*dx+dz*dz);
+    const nx=dx/dist, nz=dz/dist;
 
-  moveEnemies(dt){
-    const p=this.p;
-    this.enemies.forEach(e=>{
-      if(e.dead)return;
-      e.aiT-=dt;
-      const dx=p.x-e.x,dy=p.y-e.y,dist=Math.sqrt(dx*dx+dy*dy);
-      const nx=dx/dist,ny=dy/dist;
-      if(e.ranged){
-        e.projT-=dt;
-        const dir=dist>72?1:dist<36?-1:0;
-        e.x+=nx*dir*e.spd*dt; e.y+=ny*dir*e.spd*dt;
-        if(e.projT<=0){e.projT=2;this.fireProj(e.x,e.y,nx,ny,e.dmg);}
-        e.s.setFlipX(dx<0);
-      }else if(e.charge){
-        if(!e.charging){
-          e.x+=nx*e.spd*dt; e.y+=ny*e.spd*dt;
-          if(e.aiT<=0&&dist<70){e.aiT=2.5;e.charging=true;e.chargeT=0.4;e.cvx=nx*130;e.cvy=ny*130;}
-        }else{
-          e.chargeT-=dt; e.x+=e.cvx*dt; e.y+=e.cvy*dt;
-          if(e.chargeT<=0) e.charging=false;
-          if(dist<12&&!p.dodging) this.hurtPlayer(e.dmg);
+    if(e.ranged){
+      e.projT-=dt;
+      const dir=dist>8?1:dist<4?-1:0;
+      e.x+=nx*dir*e.spd*dt; e.z+=nz*dir*e.spd*dt;
+      if(e.projT<=0){
+        e.projT=2.2;
+        const pm=new THREE.Mesh(new THREE.SphereGeometry(0.12,5,4),mat(0xcc44ff,0x8811cc));
+        pm.position.set(e.x,0.5,e.z); scene.add(pm);
+        projectiles.push({mesh:pm,x:e.x,z:e.z,vx:nx*7,vz:nz*7,dmg:e.dmg,life:3});
+      }
+    }else if(e.charge){
+      if(!e.charging){
+        e.x+=nx*e.spd*dt; e.z+=nz*e.spd*dt;
+        if(e.aiT<=0&&dist<8){
+          e.aiT=2.5; e.charging=true; e.chargeT=0.45;
+          e.cvx=nx*13; e.cvz=nz*13;
+          e.mesh.traverse(m=>{if(m.isMesh)m.material.emissive.setHex(0x550000);});
         }
-        e.s.setFlipX(dx<0);
       }else{
-        e.x+=nx*e.spd*dt; e.y+=ny*e.spd*dt;
-        if(dist<12&&e.aiT<=0){e.aiT=1.2;if(!p.dodging)this.hurtPlayer(e.dmg);}
-        e.s.setFlipX(dx<0);
+        e.chargeT-=dt; e.x+=e.cvx*dt; e.z+=e.cvz*dt;
+        if(e.chargeT<=0){
+          e.charging=false;
+          e.mesh.traverse(m=>{if(m.isMesh)m.material.emissive.setHex(0);});
+        }
+        if(dist<1.2&&!p.dodging) hurtPlayer(e.dmg);
       }
-      e.x=Phaser.Math.Clamp(e.x,WALL+6,BW-WALL-6);
-      e.y=Phaser.Math.Clamp(e.y,WALL+6,BH-WALL-30);
-      e.s.setPosition(e.x,e.y);
-      this.drawHpBar(e);
-    });
-  }
-
-  fireProj(x,y,vx,vy,dmg){
-    const s=this.add.image(x,y,'proj').setDepth(3);
-    this.projs.push({x,y,vx:vx*80,vy:vy*80,dmg,life:3,s});
-  }
-
-  moveProjs(dt){
-    const p=this.p;
-    this.projs=this.projs.filter(pr=>{
-      pr.x+=pr.vx*dt; pr.y+=pr.vy*dt; pr.life-=dt;
-      pr.s.setPosition(pr.x,pr.y);
-      if(pr.x<WALL||pr.x>BW-WALL||pr.y<WALL||pr.y>BH-WALL||pr.life<=0){pr.s.destroy();return false;}
-      if(!p.dodging&&Phaser.Math.Distance.Between(pr.x,pr.y,p.x,p.y)<8){
-        this.hurtPlayer(pr.dmg);pr.s.destroy();return false;
-      }
-      return true;
-    });
-  }
-
-  animOrbs(dt){
-    this.orbT=(this.orbT||0)+dt;
-    this.orbs=this.orbs.filter(o=>{
-      if(o.gone)return false;
-      o.s.setPosition(o.x,o.baseY+Math.sin(this.orbT*3)*2);
-      o.s.setScale(0.9+Math.sin(this.orbT*4)*0.05);
-      if(Phaser.Math.Distance.Between(o.x,o.baseY,this.p.x,this.p.y)<10){
-        o.gone=true;o.s.destroy();
-        this.absorbSoul(o);return false;
-      }
-      return true;
-    });
-  }
-
-  absorbSoul(o){
-    const soul={id:o.id,name:o.name,desc:o.desc,col:SOUL_DEF[o.id].col};
-    const slot=this.souls.findIndex(s=>!s);
-    if(slot!==-1) this.souls[slot]=soul;
-    else this.souls[0]=soul;
-    this.float(this.p.x,this.p.y-14,`SOUL: ${soul.name}`,soul.col);
-  }
-
-  hurtPlayer(amt){
-    const p=this.p;
-    let d=Math.floor(amt*(1-(p.dmgRes||0)));
-    if(this.souls.find(s=>s&&s.id==='bone')) d=Math.floor(d*0.9);
-    p.hp-=d;
-    this.floatNum(p.x,p.y-10,d,0xff3333);
-    this.cameras.main.shake(70,0.007);
-    if(p.hp<=0){
-      p.hp=0; p.dead=true;
-      this.pSprite.setTint(0xff2200);
-      this.time.delayedCall(600,()=>this.scene.start('Over',{room:this.room}));
+    }else{
+      e.x+=nx*e.spd*dt; e.z+=nz*e.spd*dt;
+      if(dist<1.4&&e.aiT<=0){e.aiT=1.2;if(!p.dodging)hurtPlayer(e.dmg);}
     }
-  }
 
-  checkClear(){
-    if(this.cleared||this.boonUp)return;
-    if(this.enemies.length>0&&this.enemies.every(e=>e.dead)){
-      this.cleared=true;
-      this.openDoor();
-      this.float(BW/2,BH/2-30,'ROOM CLEAR!',0x00ff88);
+    e.x=Math.max(-ROOM+1,Math.min(ROOM-1,e.x));
+    e.z=Math.max(-ROOM+1,Math.min(ROOM-1,e.z));
+    e.mesh.position.set(e.x,0,e.z);
+    if(nx||nz) e.mesh.rotation.y=Math.atan2(nx,nz);
+
+    // Wisp bob
+    if(e.ranged) e.mesh.position.y=Math.sin(orbT*3+e.aiT)*0.3+0.4;
+
+    // HP bar
+    const pct=Math.max(0,e.hp/e.maxHp);
+    const fg=e.hpEl.querySelector('.ehpfg');
+    if(fg) fg.style.width=(pct*100)+'%';
+    // Project to screen
+    const pos3=new THREE.Vector3(e.x,1.6,e.z);
+    const pos2=pos3.clone().project(camera);
+    const sx=(pos2.x*0.5+0.5)*window.innerWidth;
+    const sy=(-pos2.y*0.5+0.5)*window.innerHeight;
+    e.hpEl.style.left=(sx-15)+'px'; e.hpEl.style.top=sy+'px';
+    e.hpEl.style.display=pos2.z<1?'block':'none';
+  });
+
+  // ── PROJECTILES ────────────────────────────────────
+  projectiles=projectiles.filter(pr=>{
+    pr.x+=pr.vx*dt; pr.z+=pr.vz*dt; pr.life-=dt;
+    pr.mesh.position.set(pr.x,0.5,pr.z);
+    pr.mesh.rotation.y+=dt*5;
+    if(pr.life<=0||Math.abs(pr.x)>ROOM||Math.abs(pr.z)>ROOM){
+      scene.remove(pr.mesh); return false;
     }
-    if(this.cleared&&this.p.y<WALL+8&&Math.abs(this.p.x-BW/2)<14)
-      this.showBoons();
+    const dx=pr.x-p.x, dz=pr.z-p.z;
+    if(!p.dodging&&Math.sqrt(dx*dx+dz*dz)<0.7){
+      hurtPlayer(pr.dmg); scene.remove(pr.mesh); return false;
+    }
+    return true;
+  });
+
+  // ── SOUL ORBS ──────────────────────────────────────
+  orbObjects=orbObjects.filter(o=>{
+    if(o.gone)return false;
+    o.t+=dt;
+    const newY=o.baseY+Math.sin(o.t*3)*0.15;
+    o.mesh.position.y=newY;
+    if(o.light) o.light.position.copy(o.mesh.position);
+    o.mesh.rotation.y=o.t;
+    const dx=o.x-p.x, dz=o.z-p.z;
+    if(Math.sqrt(dx*dx+dz*dz)<1){
+      o.gone=true;
+      scene.remove(o.mesh); if(o.light)scene.remove(o.light);
+      absorbSoul(o.soulId);
+      return false;
+    }
+    return true;
+  });
+
+  // ── ROOM CLEAR CHECK ───────────────────────────────
+  if(!cleared&&!boonUp&&enemies.length>0&&enemies.every(e=>e.dead)){
+    cleared=true;
+    openDoor();
+    floatDmg(p.x,p.z,'ROOM CLEAR!','#00ff88',true);
+  }
+  if(cleared&&!boonUp&&p.z<-ROOM+2&&Math.abs(p.x)<2.5){
+    showBoons();
   }
 
-  showBoons(){
-    if(this.boonUp)return;
-    this.boonUp=true;
-    const picks=Phaser.Utils.Array.Shuffle([...BOONS]).slice(0,3);
+  // ── CAMERA FOLLOW ──────────────────────────────────
+  camTarget.set(p.x,0,p.z);
+  camera.position.x+=(camTarget.x-camera.position.x)*0.08;
+  camera.position.z+=(camTarget.z+14-camera.position.z)*0.08;
+  camera.lookAt(camTarget);
 
-    const ov=this.add.graphics().setDepth(30);
-    ov.fillStyle(0x000000,0.88); ov.fillRect(0,0,BW,BH);
-    this.add.text(BW/2,12,'CHOOSE A BOON',{fontFamily:"'Press Start 2P'",fontSize:'7px',fill:'#cc88ff'}).setOrigin(0.5).setDepth(31);
+  updateHUD();
+  renderer.render(scene,camera);
+}
 
-    const objs=[ov];
-    picks.forEach((b,i)=>{
-      const cx=8+i*104, cy=32;
-      const bg=this.add.graphics().setDepth(31);
-      const draw=(hl)=>{
-        bg.clear();
-        bg.fillStyle(hl?0x2a0a44:0x130020);
-        bg.fillRect(cx,cy,96,72);
-        bg.lineStyle(1,hl?0xaa55ff:0x441166);
-        bg.strokeRect(cx,cy,96,72);
-      };
-      draw(false);
-      const nm=this.add.text(cx+4,cy+6,b.name,{fontFamily:"'Press Start 2P'",fontSize:'5px',fill:'#cc88ff',wordWrap:{width:88}}).setDepth(32);
-      const ds=this.add.text(cx+4,cy+28,b.desc,{fontFamily:"'Press Start 2P'",fontSize:'4px',fill:'#aaaacc',wordWrap:{width:88}}).setDepth(32);
-      const hint=this.add.text(cx+4,cy+60,`[${i+1}]`,{fontFamily:"'Press Start 2P'",fontSize:'5px',fill:'#555577'}).setDepth(32);
-      objs.push(bg,nm,ds,hint);
-      const zone=this.add.zone(cx+48,cy+36,96,72).setInteractive().setDepth(32);
-      zone.on('pointerover',()=>draw(true));
-      zone.on('pointerout',()=>draw(false));
-      zone.on('pointerdown',()=>pick(i));
-      objs.push(zone);
-    });
+// ── HURT PLAYER ───────────────────────────────────────
+function hurtPlayer(amt){
+  const p=playerState;
+  let d=Math.floor(amt*(1-(p.dmgRes||0)));
+  if(souls.find(s=>s&&s.id==='bone')) d=Math.floor(d*0.9);
+  p.hp-=d;
+  floatDmg(p.x,p.z,d,'#ff4444');
+  // Camera shake
+  const ox=camera.position.x, oz=camera.position.z;
+  camera.position.x+=((Math.random()-0.5)*0.4);
+  camera.position.z+=((Math.random()-0.5)*0.4);
+  setTimeout(()=>{camera.position.x=ox;camera.position.z=oz;},80);
 
-    const kh=(ev)=>{if(ev.key==='1')pick(0);if(ev.key==='2')pick(1);if(ev.key==='3')pick(2);};
-    window.addEventListener('keydown',kh);
-    const pick=(i)=>{
-      window.removeEventListener('keydown',kh);
-      picks[i].apply(this.p);
-      objs.forEach(o=>o.destroy());
-      this.boonUp=false;
-      this.buildRoom();
-    };
-  }
-
-  floatNum(x,y,n,col){
-    const c=typeof col==='number'?'#'+col.toString(16).padStart(6,'0'):col;
-    const t=this.add.text(x,y,String(n),{fontFamily:"'Press Start 2P'",fontSize:'5px',fill:c}).setOrigin(0.5).setDepth(20);
-    this.tweens.add({targets:t,y:y-18,alpha:0,duration:700,onComplete:()=>t.destroy()});
-  }
-  float(x,y,msg,col){
-    const c=typeof col==='number'?'#'+col.toString(16).padStart(6,'0'):col;
-    const t=this.add.text(x,y,msg,{fontFamily:"'Press Start 2P'",fontSize:'6px',fill:c}).setOrigin(0.5).setDepth(20);
-    this.tweens.add({targets:t,y:y-22,alpha:0,duration:1100,onComplete:()=>t.destroy()});
+  if(p.hp<=0){
+    p.hp=0; p.dead=true;
+    player.traverse(m=>{if(m.isMesh)m.material.color.setHex(0x660000);});
+    setTimeout(showGameOver,700);
   }
 }
 
-// ─── GAME OVER ───────────────────────────────────────────────
-class OverScene extends Phaser.Scene {
-  constructor(){super({key:'Over'});}
-  init(d){this.d=d;}
-  create(){
-    const {room}=this.d;
-    const r=parseInt(localStorage.getItem('sb_runs')||'0')+1;
-    const b=Math.max(parseInt(localStorage.getItem('sb_best')||'0'),room);
-    localStorage.setItem('sb_runs',r);
-    localStorage.setItem('sb_best',b);
+// ── SOUL ABSORPTION ───────────────────────────────────
+function absorbSoul(soulId){
+  const sd=SOUL_DEF[soulId];
+  const soul={id:soulId,...sd};
+  const slot=souls.findIndex(s=>!s);
+  if(slot!==-1) souls[slot]=soul;
+  else souls[0]=soul;
+  floatDmg(playerState.x,playerState.z,`SOUL: ${sd.name}`,'#ffee44',true);
+  updateHUD();
+}
 
-    const g=this.add.graphics();
-    g.fillStyle(0x000000); g.fillRect(0,0,BW,BH);
-    g.fillStyle(0x0d0008); g.fillRect(16,16,BW-32,BH-32);
-    g.lineStyle(2,0x330022); g.strokeRect(16,16,BW-32,BH-32);
+// ── HUD ───────────────────────────────────────────────
+function updateHUD(){
+  const p=playerState;
+  const pct=Math.max(0,p.hp/p.maxHp);
+  document.getElementById('hp-fg').style.width=(pct*100)+'%';
+  document.getElementById('hp-fg').style.background=pct>0.6?'#44cc44':pct>0.3?'#ffaa00':'#ff2222';
+  document.getElementById('hp-num').textContent=Math.max(0,p.hp);
+  document.getElementById('hp-max').textContent=p.maxHp;
 
-    this.add.text(BW/2,38,'YOU DIED',{fontFamily:"'Press Start 2P'",fontSize:'14px',fill:'#ff3333',
-      shadow:{x:2,y:2,color:'#330000',fill:true}}).setOrigin(0.5);
-    this.add.text(BW/2,80,`ROOM ${room}`,{fontFamily:"'Press Start 2P'",fontSize:'8px',fill:'#cccccc'}).setOrigin(0.5);
-    this.add.text(BW/2,100,`BEST ${b}   RUNS ${r}`,{fontFamily:"'Press Start 2P'",fontSize:'6px',fill:'#888899'}).setOrigin(0.5);
-
-    const btn=this.add.text(BW/2,135,'[ TRY AGAIN ]',{fontFamily:"'Press Start 2P'",fontSize:'8px',fill:'#4488ff'}).setOrigin(0.5);
-    this.tweens.add({targets:btn,alpha:0.3,yoyo:true,duration:600,repeat:-1});
-    this.add.text(BW/2,158,'M - MENU',{fontFamily:"'Press Start 2P'",fontSize:'5px',fill:'#333355'}).setOrigin(0.5);
-
-    this.input.keyboard.once('keydown-ENTER',()=>this.scene.start('Game'));
-    this.input.keyboard.once('keydown-SPACE',()=>this.scene.start('Game'));
-    this.input.keyboard.once('keydown-M',()=>{
-      document.getElementById('menu').style.display='flex';
-      this.scene.stop();
-    });
+  for(let i=0;i<4;i++){
+    const sl=document.getElementById('slot'+i);
+    const s=souls[i];
+    if(s){
+      sl.innerHTML=`<div class="soul-dot" style="background:${s.css};box-shadow:0 0 6px ${s.css};"></div><div class="soul-info"><div class="soul-name">${s.name}</div><div class="soul-desc">${s.desc}</div></div>`;
+    }else{
+      sl.innerHTML=`<div class="soul-dot" style="background:#111133;"></div><div class="soul-info"><div class="soul-name" style="color:#223">EMPTY</div></div>`;
+    }
   }
 }
 
-// ─── BOOT ────────────────────────────────────────────────────
-new Phaser.Game({
-  type:Phaser.AUTO,
-  width:BW, height:BH, zoom:ZOOM,
-  pixelArt:true,
-  backgroundColor:'#000000',
-  scene:[GameScene,OverScene],
-});
+// ── FLOAT DAMAGE NUMBERS ─────────────────────────────
+function floatDmg(wx,wz,text,color,big=false){
+  const pos3=new THREE.Vector3(wx,1.2,wz);
+  const pos2=pos3.clone().project(camera);
+  const sx=(pos2.x*0.5+0.5)*window.innerWidth;
+  const sy=(-pos2.y*0.5+0.5)*window.innerHeight;
+  const d=document.createElement('div');
+  d.className='dmg';
+  d.style.cssText=`left:${sx}px;top:${sy}px;color:${color};font-size:${big?'9px':'7px'};`;
+  d.textContent=text;
+  document.body.appendChild(d);
+  setTimeout(()=>d.remove(),700);
+}
 
-document.getElementById('play-btn').addEventListener('click',()=>{
+// ── BOON SELECTION ────────────────────────────────────
+function showBoons(){
+  if(boonUp)return;
+  boonUp=true;
+  const picks=shuffle([...BOONS]).slice(0,3);
+  const ov=document.getElementById('boon-overlay');
+  const cards=document.getElementById('boon-cards');
+  cards.innerHTML='';
+  picks.forEach((b,i)=>{
+    const c=document.createElement('div');
+    c.className='boon-card';
+    c.innerHTML=`<h3>${b.name}</h3><p>${b.desc}</p><p class="key">[${i+1}]</p>`;
+    c.onclick=()=>pickBoon(i);
+    cards.appendChild(c);
+  });
+  ov.style.display='flex';
+
+  function kh(ev){
+    if(ev.key==='1')pickBoon(0);
+    else if(ev.key==='2')pickBoon(1);
+    else if(ev.key==='3')pickBoon(2);
+    else return;
+    window.removeEventListener('keydown',kh);
+  }
+  window.addEventListener('keydown',kh);
+
+  function pickBoon(i){
+    picks[i].apply(playerState);
+    ov.style.display='none';
+    boonUp=false;
+    nextRoom();
+  }
+}
+
+// ── GAME OVER ────────────────────────────────────────
+function showGameOver(){
+  const r=parseInt(localStorage.getItem('sb_runs')||'0')+1;
+  const b=Math.max(parseInt(localStorage.getItem('sb_best')||'0'),roomNum);
+  localStorage.setItem('sb_runs',r); localStorage.setItem('sb_best',b);
+  document.getElementById('over-room').textContent=`Reached Room ${roomNum}`;
+  document.getElementById('over-best').textContent=`Best: Room ${b}   Runs: ${r}`;
+  document.getElementById('over').style.display='flex';
+}
+
+window.restartGame=function(){
+  document.getElementById('over').style.display='none';
+  enemies.forEach(e=>{scene.remove(e.mesh);e.hpEl?.remove();});
+  projectiles.forEach(p=>scene.remove(p.mesh));
+  orbObjects.forEach(o=>{scene.remove(o.mesh);if(o.light)scene.remove(o.light);});
+  initGame();
+};
+
+document.addEventListener('keydown',e=>{if(e.code==='Enter'&&document.getElementById('over').style.display==='flex')window.restartGame();});
+
+// ── START ────────────────────────────────────────────
+window.startGame=function(){
   document.getElementById('menu').style.display='none';
-});
+  gameRunning=true;
+  initGame();
+  requestAnimationFrame(update);
+};
+
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
 </script>
 </body>
 </html>
