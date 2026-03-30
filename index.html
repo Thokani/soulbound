@@ -42,10 +42,10 @@ body{background:#000;overflow:hidden;}
 #over button:hover{background:rgba(136,68,255,.2);}
 
 #menu{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;overflow:hidden;}
-#menu-bg{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 60%,#1a0840 0%,#050010 70%);}
+#menu-bg{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 40%,#87ceeb 0%,#4488cc 40%,#2244aa 100%);}
 #menu-content{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:12px;}
-#menu h1{font-family:'Cinzel',serif;font-size:42px;color:#ddbbff;letter-spacing:10px;text-shadow:0 0 60px #8844ff,0 0 120px #4422aa;margin-bottom:4px;}
-#menu .sub{font-family:'Cinzel',serif;font-size:10px;color:#665588;letter-spacing:3px;}
+#menu h1{font-family:'Cinzel',serif;font-size:42px;color:#ffffff;letter-spacing:10px;text-shadow:0 0 30px #ffffff,2px 2px 0 #4466aa;margin-bottom:4px;}
+#menu .sub{font-family:'Cinzel',serif;font-size:10px;color:#cce8ff;letter-spacing:3px;}
 #menu .ctrl{font-family:'Cinzel',serif;font-size:8px;color:#443366;margin:2px 0;letter-spacing:1px;}
 #menu #mbest{font-family:'Cinzel',serif;font-size:8px;color:#332244;margin-top:8px;letter-spacing:2px;}
 #menu button{margin-top:18px;font-family:'Cinzel',serif;background:transparent;color:#cc88ff;border:1px solid rgba(136,68,255,.6);padding:14px 40px;font-size:13px;cursor:pointer;letter-spacing:6px;text-shadow:0 0 20px #8844ff;}
@@ -123,12 +123,12 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
 renderer.shadowMap.enabled=true;
 renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 renderer.setSize(window.innerWidth,window.innerHeight);
-renderer.setClearColor(0x080015);
-renderer.toneMapping=THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure=1.2;
+renderer.setClearColor(0x87ceeb);
+
+
 
 const scene=new THREE.Scene();
-scene.fog=new THREE.FogExp2(0x0d0828,0.035);
+scene.fog=new THREE.FogExp2(0xb8d4f0,0.02);
 
 const camera=new THREE.PerspectiveCamera(65,window.innerWidth/window.innerHeight,0.1,150);
 
@@ -139,11 +139,11 @@ window.addEventListener('resize',()=>{
 });
 
 // ── LIGHTING (Frieren-esque: cold moonlight + warm magic) ──
-const ambient=new THREE.AmbientLight(0x1a0a3a,1.5);
+const ambient=new THREE.AmbientLight(0xffeedd,1.2);
 scene.add(ambient);
 // Moonlight
-const moon=new THREE.DirectionalLight(0x8899ff,1.0);
-moon.position.set(-10,20,-5);
+const moon=new THREE.DirectionalLight(0xfffbe0,2.2);
+moon.position.set(8,20,5);
 moon.castShadow=true;
 moon.shadow.mapSize.set(2048,2048);
 moon.shadow.camera.near=0.5; moon.shadow.camera.far=80;
@@ -152,20 +152,20 @@ moon.shadow.camera.top=20;   moon.shadow.camera.bottom=-20;
 moon.shadow.bias=-0.001;
 scene.add(moon);
 // Rim light (purple magic glow)
-const rim=new THREE.DirectionalLight(0x6622cc,0.5);
+const rim=new THREE.DirectionalLight(0xaaddff,0.4);
 rim.position.set(8,5,8);
 scene.add(rim);
 
 // ── MATERIALS ────────────────────────────────────────
-const flat=(c,em=0)=>new THREE.MeshLambertMaterial({color:c,emissive:em,flatShading:true});
-const flatT=(c,op=0.7)=>new THREE.MeshLambertMaterial({color:c,flatShading:true,transparent:true,opacity:op});
+const flat=(c,em=0)=>new THREE.MeshToonMaterial({color:c,emissive:em});
+const flatT=(c,op=0.7)=>new THREE.MeshToonMaterial({color:c,transparent:true,opacity:op});
 
 // ── SCENE ELEMENTS ───────────────────────────────────
 function buildEnvironment(){
   // Ground — mossy ancient stone
   const ground=new THREE.Mesh(
     new THREE.PlaneGeometry(60,60,20,20),
-    new THREE.MeshLambertMaterial({color:0x1a2a14,flatShading:true})
+    new THREE.MeshToonMaterial({color:0x5ab52e})
   );
   // Slightly undulate the ground for a natural feel
   const pos=ground.geometry.attributes.position;
@@ -185,12 +185,12 @@ function buildEnvironment(){
     const radius=18+Math.random()*10;
     const tx=Math.cos(angle)*radius, tz=Math.sin(angle)*radius;
     const treeH=3+Math.random()*3;
-    const trunk=new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.18,treeH*0.4,5),flat(0x2a1a0a));
+    const trunk=new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.18,treeH*0.4,5),flat(0x7a4a1a));
     trunk.position.set(tx,treeH*0.2,tz);
     trunk.castShadow=true;
     scene.add(trunk);
     // Multiple cone layers for lush tree
-    const colors=[0x1a3a0d,0x1e4410,0x163208];
+    const colors=[0x3d9e22,0x4ab828,0x2d8a18];
     for(let j=0;j<3;j++){
       const cone=new THREE.Mesh(
         new THREE.ConeGeometry((0.8-j*0.15)*(0.7+Math.random()*0.3),treeH*(0.5-j*0.05),5+j),
@@ -204,8 +204,8 @@ function buildEnvironment(){
   }
 
   // Ancient stone ruins (pillars, broken walls)
-  const stoneMat=flat(0x3a3848);
-  const stoneDark=flat(0x252333);
+  const stoneMat=flat(0xd4c4a0);
+  const stoneDark=flat(0xb8a882);
   // Pillars
   const pillarPositions=[
     [-12,0,-12],[12,0,-12],[-12,0,12],[12,0,12],
@@ -231,7 +231,7 @@ function buildEnvironment(){
     const size=0.2+Math.random()*0.5;
     const rock=new THREE.Mesh(
       new THREE.DodecahedronGeometry(size,0),
-      flat(0x303040)
+      flat(0xb0a090)
     );
     rock.position.set(rx,size*0.4,rz);
     rock.rotation.set(Math.random()*3,Math.random()*3,Math.random()*3);
@@ -245,7 +245,7 @@ function buildEnvironment(){
     const r=8+Math.random()*12;
     const px=Math.cos(angle)*r, pz=Math.sin(angle)*r;
     const wisp=new THREE.Mesh(new THREE.SphereGeometry(0.05,4,4),
-      new THREE.MeshBasicMaterial({color:Math.random()<0.5?0xaa88ff:0x44ffcc}));
+      new THREE.MeshBasicMaterial({color:Math.random()<0.5?0xffdd44:0x44ffaa}));
     wisp.position.set(px,0.5+Math.random()*2,pz);
     wisp._orbitAngle=angle;
     wisp._orbitR=r;
@@ -279,7 +279,7 @@ function buildArena(){
   // Portal (north, inactive)
   portalMesh=new THREE.Mesh(
     new THREE.TorusGeometry(1.2,0.2,6,12),
-    flat(0x330066,0x220044)
+    flat(0x8866dd,0x443388)
   );
   portalMesh.position.set(0,1.5,-ROOM+1);
   portalMesh.castShadow=false;
@@ -311,22 +311,22 @@ function openPortal(){
 function makePlayerMesh(){
   const g=new THREE.Group();
   // Body (slim, tall — anime proportions)
-  const body=new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.22,0.9,7),flat(0x334488));
+  const body=new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.22,0.9,7),flat(0x4477dd));
   body.position.y=0.55; body.castShadow=true; g.add(body);
   // Cloak/cape
-  const cloak=new THREE.Mesh(new THREE.ConeGeometry(0.28,0.8,6),flat(0x1a2255));
+  const cloak=new THREE.Mesh(new THREE.ConeGeometry(0.28,0.8,6),flat(0x2244aa));
   cloak.position.y=0.4; cloak.castShadow=true; g.add(cloak);
   // Head
-  const head=new THREE.Mesh(new THREE.SphereGeometry(0.2,7,6),flat(0xffddcc));
+  const head=new THREE.Mesh(new THREE.SphereGeometry(0.2,7,6),flat(0xffcc99));
   head.position.y=1.1; head.castShadow=true; g.add(head);
   // Hair (Frieren-ish long hair)
-  const hair=new THREE.Mesh(new THREE.ConeGeometry(0.22,0.5,6),flat(0xe8e8e8));
+  const hair=new THREE.Mesh(new THREE.ConeGeometry(0.22,0.5,6),flat(0xeeeeff));
   hair.position.y=1.15; hair.rotation.x=0.2; hair.castShadow=true; g.add(hair);
   // Staff
-  const staff=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.04,1.4,5),flat(0x553311));
+  const staff=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.04,1.4,5),flat(0x885522));
   staff.position.set(0.3,0.7,0.1); staff.rotation.z=0.15; staff.castShadow=true; g.add(staff);
   // Staff gem
-  const gem=new THREE.Mesh(new THREE.OctahedronGeometry(0.1),flat(0x8844ff,0x4422aa));
+  const gem=new THREE.Mesh(new THREE.OctahedronGeometry(0.1),flat(0x66aaff,0x2255cc));
   gem.position.set(0.35,1.4,0.1); g.add(gem);
   // Glow
   const glow=new THREE.PointLight(0x4422aa,0.5,2);
@@ -354,7 +354,7 @@ function makeSkeletonMesh(){
 
 function makeWispMesh(){
   const g=new THREE.Group();
-  const body=new THREE.Mesh(new THREE.SphereGeometry(0.28,7,6),flat(0x7711bb,0x4400aa));
+  const body=new THREE.Mesh(new THREE.SphereGeometry(0.28,7,6),flat(0x9944ee,0x6622bb));
   body.castShadow=false; g.add(body);
   const inner=new THREE.Mesh(new THREE.SphereGeometry(0.14,5,4),flat(0xffffff,0xddaaff));
   g.add(inner);
