@@ -30,6 +30,7 @@
 </style>
 </head>
 <body>
+<div id="game-container" style="display:none;"></div>
 <div id="menu">
   <h1>SOULBOUND</h1>
   <p>A roguelike about absorbing souls</p>
@@ -51,6 +52,7 @@
 // Click play → load Phaser and start game
 document.getElementById('play-btn').addEventListener('click', function() {
   document.getElementById('menu').style.display = 'none';
+  document.getElementById('game-container').style.display = 'block';
   const s = document.createElement('script');
   s.src = 'https://cdn.jsdelivr.net/npm/phaser@3.70.0/dist/phaser.min.js';
   s.onload = initGame;
@@ -822,7 +824,7 @@ class GameOverScene extends Phaser.Scene {
     type: Phaser.AUTO,
     width: W, height: H,
     backgroundColor: '#0a0a0a',
-    parent: document.body,
+    parent: 'game-container',
     scene: [GameScene, GameOverScene],
   };
   new Phaser.Game(config);
