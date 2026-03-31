@@ -115,16 +115,10 @@ body{background:#1a3a0a;overflow:hidden;}
   </div>
 </div>
 
-<script type="importmap">
-{"imports":{
-  "three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
-}}
-</script>
 <script type="module">
-import * as THREE from 'three';
-import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
-import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import * as THREE from 'https://esm.sh/three@0.160.0';
+import {GLTFLoader} from 'https://esm.sh/three@0.160.0/addons/loaders/GLTFLoader.js';
+import {clone as skeletonClone} from 'https://esm.sh/three@0.160.0/addons/utils/SkeletonUtils.js';
 
 const sbR=parseInt(localStorage.getItem('sb_runs')||'0');
 const sbB=parseInt(localStorage.getItem('sb_best')||'0');
@@ -228,7 +222,7 @@ async function loadAll(){
 function cloneModel(key,scale=1){
   if(!models[key]) return fallbackMesh();
   // Use SkeletonUtils.clone for animated models (handles skinned meshes)
-  const m=SkeletonUtils.clone(models[key]);
+  const m=skeletonClone(models[key]);
   m.scale.setScalar(scale);
   m.traverse(n=>{if(n.isMesh){n.castShadow=true;n.receiveShadow=true;}});
   return m;
