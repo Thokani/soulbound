@@ -124,6 +124,7 @@ body{background:#1a3a0a;overflow:hidden;}
 <script type="module">
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
 const sbR=parseInt(localStorage.getItem('sb_runs')||'0');
 const sbB=parseInt(localStorage.getItem('sb_best')||'0');
@@ -226,7 +227,8 @@ async function loadAll(){
 
 function cloneModel(key,scale=1){
   if(!models[key]) return fallbackMesh();
-  const m=models[key].clone();
+  // Use SkeletonUtils.clone for animated models (handles skinned meshes)
+  const m=SkeletonUtils.clone(models[key]);
   m.scale.setScalar(scale);
   m.traverse(n=>{if(n.isMesh){n.castShadow=true;n.receiveShadow=true;}});
   return m;
@@ -740,18 +742,21 @@ document.getElementById('play-btn').addEventListener('click', async ()=>{
   document.getElementById('loading').style.display='flex';
   setProgress(0,'loading assets...');
 
-  await loadAll();
-
-  setProgress(100,'entering the ruins...');
-  await new Promise(r=>setTimeout(r,400));
-
-  document.getElementById('loading').style.display='none';
-  document.getElementById('hud').style.display='block';
-
-  buildEnvironment();
-  gameRunning=true;
-  initGame();
-  requestAnimationFrame(loop);
+  try{
+    await loadAll();
+    setProgress(100,'entering the ruins...');
+    await new Promise(r=>setTimeout(r,300));
+    document.getElementById('loading').style.display='none';
+    document.getElementById('hud').style.display='block';
+    buildEnvironment();
+    gameRunning=true;
+    initGame();
+    requestAnimationFrame(loop);
+  }catch(err){
+    document.getElementById('load-txt').textContent='ERROR: '+err.message;
+    document.getElementById('load-txt').style.color='#ff4444';
+    console.error('Boot error:',err);
+  }
 });
 </script>
 </body>
